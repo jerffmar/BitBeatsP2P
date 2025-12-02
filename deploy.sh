@@ -55,7 +55,12 @@ if ! command -v node >/dev/null 2>&1; then
 else
 	warn "Node.js already installed; skipping"
 fi
-npm install -g pm2
+
+if command -v pm2 >/dev/null 2>&1; then
+	warn "PM2 already installed; skipping"
+else
+	npm install -g pm2
+fi
 
 info "Installing Nginx and Certbot"
 apt install -y nginx python3-certbot-nginx
