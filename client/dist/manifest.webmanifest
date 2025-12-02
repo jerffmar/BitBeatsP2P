@@ -1,1 +1,1 @@
-{"name":"bitbeats-client","short_name":"bitbeats-client","start_url":"/","display":"standalone","background_color":"#ffffff","lang":"en","scope":"/"}
+{"name":"BitBeats","short_name":"BitBeats","start_url":"/","display":"standalone","background_color":"#0f172a","lang":"en","scope":"/","description":"Decentralized P2P Music Streaming","theme_color":"#0f172a","icons":[{"src":"pwa-192x192.png","sizes":"192x192","type":"image/png"},{"src":"pwa-512x512.png","sizes":"512x512","type":"image/png"}]}

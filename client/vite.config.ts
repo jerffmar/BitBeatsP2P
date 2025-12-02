@@ -12,11 +12,43 @@ export default defineConfig({
   plugins: [
     react(),
     nodePolyfills(),
-    VitePWA()
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'BitBeats',
+        short_name: 'BitBeats',
+        description: 'Decentralized P2P Music Streaming',
+        theme_color: '#0f172a',
+        background_color: '#0f172a',
+        display: 'standalone',
+        icons: [
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      }
+    })
   ],
   resolve: {
     alias: {
       'bittorrent-dht': path.resolve(__dirname, 'src/shims/bittorrent-dht.ts'),
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+        },
+      },
     },
   },
 });

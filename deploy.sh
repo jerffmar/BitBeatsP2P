@@ -5,10 +5,14 @@
 # Assume que o script é executado a partir do diretório raiz do projeto (bitbeats/)
 
 # --- Configurações ---
+clear
 PROJECT_DIR=$(pwd)
 REPO_URL="<URL_DO_SEU_REPOSITORIO_GIT>" # Substitua pela URL real
 # Detect Public IP
 SERVER_IP=$(curl -s ifconfig.me)
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP="127.0.0.1"
+fi
 DOMAIN_NAME=$SERVER_IP 
 USER_NAME="ubuntu" # Usuário padrão do VPS
 
@@ -47,8 +51,8 @@ log "2. Instalando Node.js v20"
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
-log "Instalando PM2 (Process Manager)"
-sudo npm install -g pm2
+log "Instalando PM2 e TSX (TypeScript Execute)"
+sudo npm install -g pm2 tsx
 
 # --- 3. Instalação do Nginx e Certbot ---
 log "3. Instalando Nginx e Certbot"
@@ -58,9 +62,6 @@ sudo apt install -y nginx certbot python3-certbot-nginx
 log "4. Clonando ou garantindo o código-fonte"
 if [ ! -d "$PROJECT_DIR/.git" ]; then
     log "Aviso: Não é um repositório Git. Assumindo que o código já está aqui."
-    # Se estivéssemos clonando:
-    # git clone $REPO_URL $PROJECT_DIR || error "Falha ao clonar o repositório."
-    # cd $PROJECT_DIR
 fi
 
 log "Instalando dependências do projeto (Backend e Frontend)"
@@ -126,22 +127,41 @@ sudo nginx -t && sudo systemctl restart nginx || error "Falha na configuração 
 
 # --- 6. Configuração do Certbot (HTTPS) ---
 log "6. Pular Certbot (Usando Self-Signed para IP)"
-# Nota: O Certbot precisa que o domínio esteja apontando para este VPS
-# Comente as linhas abaixo se não tiver um domínio configurado
-# sudo certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos -m seu_email@example.com || log "Aviso: Falha ao obter certificado SSL. Verifique o DNS."
 
 # --- 7. Configuração do PM2 ---
 log "7. Configurando PM2 para manter o servidor Node.js ativo"
-# O PM2 precisa ser executado a partir do diretório raiz do projeto
 pm2 stop bitbeats 2>/dev/null
 pm2 delete bitbeats 2>/dev/null
-PORT=3000 pm2 start npm --name "bitbeats" -- run start
+
+# Debug: Verificar se o arquivo existe
+if [ ! -f "server.ts" ]; then
+    log "DEBUG: Arquivo server.ts não encontrado no diretório atual: $(pwd)"
+    log "Conteúdo do diretório:"
+    ls -la
+    error "Arquivo de entrada do servidor não encontrado."
+fi
+
+# Usar TSX (mais robusto que ts-node para Node 22+)
+# Definimos HOST para 127.0.0.1 para garantir que o Nginx encontre o serviço
+HOST=127.0.0.1 PORT=3000 pm2 start server.ts --interpreter tsx --name "bitbeats"
 
 log "Configurando PM2 para iniciar no boot"
-pm2 save
+pm2 save --force
 sudo env PATH=\$PATH:/usr/bin pm2 startup systemd -u $USER_NAME --hp /home/$USER_NAME
 
+# --- 8. Verificação de Status ---
+log "8. Verificando status da aplicação"
+sleep 5 # Aguarda alguns segundos para o servidor iniciar
+
+HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" http://127.0.0.1:3000)
+
+if [ "$HTTP_STATUS" == "200" ] || [ "$HTTP_STATUS" == "301" ] || [ "$HTTP_STATUS" == "302" ]; then
+    log "SUCESSO: Aplicação respondendo (HTTP $HTTP_STATUS)"
+else
+    log "AVISO: Aplicação retornou status inesperado: $HTTP_STATUS. Verifique os logs: pm2 logs bitbeats"
+fi
+
 log "Deployment concluído!"
-echo "Acesse seu aplicativo em http://$DOMAIN_NAME (ou HTTPS se o Certbot funcionou)."
+echo "Acesse seu aplicativo em https://$DOMAIN_NAME (Aceite o certificado auto-assinado)"
 echo "Status do PM2: pm2 status"
-echo "Logs do PM2: pm2 logs bitbeats"
+pm2 status bitbeats
