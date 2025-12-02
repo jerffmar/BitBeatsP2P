@@ -11,6 +11,15 @@ info()  { echo -e "${GREEN}[+] ${1}${RESET}"; }
 warn()  { echo -e "${YELLOW}[!] ${1}${RESET}"; }
 error() { echo -e "${RED}[-] ${1}${RESET}"; }
 
+require_dir() {
+	local dir="$1"
+	local label="$2"
+	if [[ ! -d "${dir}" ]]; then
+		error "${label} directory not found at ${dir}. Set ${label}_DIR or update the repository layout."
+		exit 1
+	fi
+}
+
 if [[ $EUID -ne 0 ]]; then
 	error "Run this script as root (use sudo)."
 	exit 1
@@ -116,29 +125,23 @@ else
 	fi
 fi
 
+require_dir "${FRONTEND_DIR}" "FRONTEND"
 info "Installing frontend dependencies and building"
-if [[ -d "${FRONTEND_DIR}" ]]; then
-	pushd "${FRONTEND_DIR}" >/dev/null
+pushd "${FRONTEND_DIR}" >/dev/null
 	npm install
 	npm run build
-	popd >/dev/null
-	mkdir -p "${HTML_DIR}"
-	rsync -a --delete "${FRONTEND_DIR}/dist/" "${HTML_DIR}/"
-else
-	warn "Frontend directory not found at ${FRONTEND_DIR}; skipping build"
-fi
+popd >/dev/null
+mkdir -p "${HTML_DIR}"
+rsync -a --delete "${FRONTEND_DIR}/dist/" "${HTML_DIR}/"
 
+require_dir "${BACKEND_DIR}" "BACKEND"
 info "Installing backend dependencies, running migrations, and building"
-if [[ -d "${BACKEND_DIR}" ]]; then
-	pushd "${BACKEND_DIR}" >/dev/null
+pushd "${BACKEND_DIR}" >/dev/null
 	npm install
 	export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public"
 	npx prisma migrate deploy
 	npm run build
-	popd >/dev/null
-else
-	warn "Backend directory not found at ${BACKEND_DIR}; skipping setup"
-fi
+popd >/dev/null
 
 info "Creating Nginx server block"
 cat <<'EOF' >/etc/nginx/sites-available/bitbeats
@@ -191,6 +194,11 @@ else
 fi
 
 info "Running health check"
-curl -I http://localhost | head -n 1
+if curl -fsS --max-time 10 http://localhost >/dev/null; then
+	info "Health check succeeded"
+else
+	error "Health check failed (service unreachable or returned >=400)"
+	exit 1
+fi
 
 info "Deployment complete"
