@@ -83,6 +83,12 @@ if [ -f /etc/nginx/sites-enabled/default ]; then
     sudo rm /etc/nginx/sites-enabled/default
 fi
 
+# Remove old config if exists (from previous runs)
+if [ -f /etc/nginx/sites-enabled/bitbeats.example.com ]; then
+    log "Removendo configuração antiga (bitbeats.example.com)"
+    sudo rm /etc/nginx/sites-enabled/bitbeats.example.com
+fi
+
 # Generate Self-Signed Certificate
 log "Gerando certificado auto-assinado para $SERVER_IP"
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -92,14 +98,14 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 
 sudo bash -c "cat > $NGINX_CONF" <<EOF
 server {
-    listen 80;
-    server_name $SERVER_IP;
+    listen 80 default_server;
+    server_name _;
     return 301 https://\$host\$request_uri;
 }
 
 server {
-    listen 443 ssl;
-    server_name $SERVER_IP;
+    listen 443 ssl default_server;
+    server_name _;
 
     ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
     ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
