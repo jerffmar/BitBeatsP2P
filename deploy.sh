@@ -64,25 +64,21 @@ info "Installing PostgreSQL 16"
 apt install -y postgresql postgresql-contrib
 
 info "Configuring PostgreSQL role and database"
-sudo -u postgres psql <<EOF
-DO \$\$
-BEGIN
-	IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${DB_USER}') THEN
-		CREATE ROLE ${DB_USER} LOGIN PASSWORD '${DB_PASSWORD}';
-	END IF;
-END
-\$\$;
-DO \$\$
-BEGIN
-	IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '${DB_NAME}') THEN
-		CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};
-	END IF;
-END
-\$\$;
-ALTER ROLE ${DB_USER} SET client_encoding TO 'UTF8';
-ALTER ROLE ${DB_USER} SET default_transaction_isolation TO 'read committed';
-ALTER ROLE ${DB_USER} SET timezone TO 'UTC';
-EOF
+if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
+	sudo -u postgres psql -c "CREATE ROLE ${DB_USER} LOGIN PASSWORD '${DB_PASSWORD}'"
+else
+	warn "PostgreSQL role ${DB_USER} already exists"
+fi
+
+if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
+	sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER}"
+else
+	warn "PostgreSQL database ${DB_NAME} already exists"
+fi
+
+sudo -u postgres psql -c "ALTER ROLE ${DB_USER} SET client_encoding TO 'UTF8'"
+sudo -u postgres psql -c "ALTER ROLE ${DB_USER} SET default_transaction_isolation TO 'read committed'"
+sudo -u postgres psql -c "ALTER ROLE ${DB_USER} SET timezone TO 'UTC'"
 
 info "Ensuring uploads directory exists"
 mkdir -p "${UPLOAD_DIR}"
