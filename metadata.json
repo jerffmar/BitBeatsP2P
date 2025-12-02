@@ -1,5 +1,0 @@
-{
-  "name": "BitBeats",
-  "description": "A hybrid P2P music streaming application using WebTorrent and Express. Uses a local SQLite database for track metadata and user history.",
-  "requestFramePermissions": []
-}

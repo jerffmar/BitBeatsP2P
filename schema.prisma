@@ -1,0 +1,69 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  storageUsed  BigInt   @default(0) // Em bytes
+  pixKey       String?
+  tracks       Track[]
+  history      PlaybackHistory[]
+}
+
+model Track {
+  id            Int      @id @default(autoincrement())
+  title         String
+  artist        String
+  album         String
+  magnetURI     String   @unique
+  webSeedUrl    String   @unique
+  filePath      String   @unique
+  size          BigInt // Em bytes
+  uploadedAt    DateTime @default(now())
+  genreId       Int
+  userId        Int
+
+  user          User     @relation(fields: [userId], references: [id])
+  genre         Genre    @relation(fields: [genreId], references: [id])
+  history       PlaybackHistory[]
+}
+
+model Genre {
+  id    Int     @id @default(autoincrement())
+  name  String  @unique
+  tracks Track[]
+}
+
+model PlaybackHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  trackId   Int
+  playedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  track     Track    @relation(fields: [trackId], references: [id])
+
+  @@unique([userId, trackId, playedAt])
+}
+
+// Modelos adicionais para metadados
+model Artist {
+  id    Int     @id @default(autoincrement())
+  name  String  @unique
+  // Relacionamento com Album e Track pode ser adicionado se necessário
+}
+
+model Album {
+  id    Int     @id @default(autoincrement())
+  title String  @unique
+  // Relacionamento com Artist e Track pode ser adicionado se necessário
+}

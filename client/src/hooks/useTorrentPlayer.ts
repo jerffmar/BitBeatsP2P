@@ -1,83 +1,76 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import WebTorrent from 'webtorrent';
 
-export const useTorrentPlayer = (magnetURI: string | null) => {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+type TorrentStats = {
+  numPeers: number;
+  downloadSpeed: number;
+  uploadSpeed: number;
+  progress: number;
+};
+
+const defaultStats: TorrentStats = {
+  numPeers: 0,
+  downloadSpeed: 0,
+  uploadSpeed: 0,
+  progress: 0,
+};
+
+export const useTorrentPlayer = () => {
   const clientRef = useRef<WebTorrent.Instance>();
-  const [buffering, setBuffering] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const torrentRef = useRef<WebTorrent.Torrent | null>(null);
+  const [stats, setStats] = useState<TorrentStats>(defaultStats);
+  const [error, setError] = useState<string | null>(null);
+  const [isBuffering, setIsBuffering] = useState(false);
 
   useEffect(() => {
-    if (!clientRef.current) clientRef.current = new WebTorrent();
+    clientRef.current = new WebTorrent();
     return () => clientRef.current?.destroy();
   }, []);
 
-  useEffect(() => {
-    if (!magnetURI || !clientRef.current || !audioRef.current) return;
+  const play = useCallback((magnetURI: string, audioEl?: HTMLAudioElement | null) => {
+    if (!clientRef.current || !audioEl) return;
+    setIsBuffering(true);
+    setError(null);
 
-    setBuffering(true);
-    setProgress(0);
-    let torrent: WebTorrent.Torrent | null = null;
-    let cancelled = false;
+    if (torrentRef.current) {
+      torrentRef.current.destroy();
+      torrentRef.current = null;
+    }
 
-    const client = clientRef.current;
-    client.add(magnetURI, (t) => {
-      if (cancelled) return;
-      torrent = t;
+    clientRef.current.add(magnetURI, (torrent) => {
+      torrentRef.current = torrent;
 
-      const audioFile =
-        t.files.find((file) => /\.(mp3|flac|wav|ogg)$/i.test(file.name)) ?? t.files[0];
+      const updateStats = () =>
+        setStats({
+          numPeers: torrent.numPeers,
+          downloadSpeed: torrent.downloadSpeed,
+          uploadSpeed: torrent.uploadSpeed,
+          progress: torrent.progress,
+        });
+
+      torrent.on('download', updateStats);
+      torrent.on('upload', updateStats);
+      torrent.on('wire', updateStats);
+      torrent.on('done', () => {
+        setIsBuffering(false);
+        updateStats();
+      });
+
+      const audioFile = torrent.files.find((file) => /\.(mp3|flac|wav|ogg)$/i.test(file.name)) ?? torrent.files[0];
       if (!audioFile) {
-        setBuffering(false);
+        setError('No playable audio file found in torrent.');
+        setIsBuffering(false);
         return;
       }
 
-      audioFile.renderTo(audioRef.current as HTMLAudioElement, { autoplay: true }, (err) => {
-        if (err) console.error('WebTorrent render error', err);
+      audioFile.renderTo(audioEl, { autoplay: true }, (err) => {
+        if (err) setError(err.message);
+        setIsBuffering(false);
       });
 
-      t.on('download', () => {
-        if (t.length) setProgress(t.downloaded / t.length);
-      });
-      t.on('done', () => setProgress(1));
-      setBuffering(false);
+      updateStats();
     });
-
-    return () => {
-      cancelled = true;
-      setPlaying(false);
-      setProgress(0);
-      setBuffering(false);
-      if (torrent) torrent.destroy();
-      client.remove(magnetURI).catch(() => null);
-    };
-  }, [magnetURI]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const handlePlay = () => setPlaying(true);
-    const handlePause = () => setPlaying(false);
-    const handleWaiting = () => setBuffering(true);
-    const handleCanPlay = () => setBuffering(false);
-
-    audio.addEventListener('playing', handlePlay);
-    audio.addEventListener('pause', handlePause);
-    audio.addEventListener('waiting', handleWaiting);
-    audio.addEventListener('canplay', handleCanPlay);
-
-    return () => {
-      audio.removeEventListener('playing', handlePlay);
-      audio.removeEventListener('pause', handlePause);
-      audio.removeEventListener('waiting', handleWaiting);
-      audio.removeEventListener('canplay', handleCanPlay);
-    };
   }, []);
 
-  const play = useCallback(() => audioRef.current?.play(), []);
-  const pause = useCallback(() => audioRef.current?.pause(), []);
-
-  return { audioRef, buffering, playing, progress, play, pause };
+  return { play, stats, error, isBuffering };
 };

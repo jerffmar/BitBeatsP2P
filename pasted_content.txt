@@ -1,0 +1,86 @@
+# ROLE
+Act as a Principal Full-Stack Architect and DevOps Engineer.
+You are building **"BitBeats"**: A decentralized, hybrid P2P music streaming PWA.
+
+# ARCHITECTURE: The "Bare Metal Monolith"
+We are strictly limited to **Node.js, React, and SQLite**. No Docker, No Nginx containers.
+The app runs as a single process: Express.js serves the API *and* the static React frontend files.
+It is deployed directly onto a **Ubuntu 24.04 Minimal VPS**.
+
+# TECH STACK
+- **Runtime:** Node.js v20.
+- **Database:** SQLite (managed via Prisma ORM). Stored locally as `prod.db`.
+- **Backend:** Express.js + `webtorrent-hybrid` (Server-side seeding).
+- **Frontend:** React + Vite + TailwindCSS + `webtorrent` (Client-side streaming).
+- **Storage:** Local file system (`./uploads`).
+- **Offline:** OPFS (Origin Private File System).
+
+# CORE REQUIREMENTS
+
+### 1. Hybrid P2P Engine
+- **Server Authority:** When a user uploads a file, the server saves it to disk (`./uploads`) and acts as the initial "Super Seeder" using `webtorrent-hybrid`.
+- **WebSeed Fallback:** The server MUST provide an HTTP endpoint (`/api/stream/:id`) that supports **Range Requests (206)**. This URL is added to the Torrent metadata so browsers can download via HTTP if no peers are online.
+- **Quota:** Hard limit of **10GB** per user. Check disk usage before accepting uploads.
+- **Retention:** Server seeds for 90 days. A cron job prunes old active seeds (but keeps files).
+
+### 2. PWA Gatekeeping & The Vault
+- **Gatekeeper:** Use `window.matchMedia('(display-mode: standalone)')`.
+  - Browser Tab: Show Landing/Login only. Block Player.
+  - Installed App: Unlock full UI.
+- **The Vault (Offline):** Users can "Download" tracks. This streams the torrent into the **OPFS**. Subsequent plays read from OPFS (0 bandwidth).
+
+### 3. Metadata & Discovery
+- **Smart Matching:** On upload, use fuzzy matching (Levenshtein) against MusicBrainz API to auto-fill metadata.
+- **Recommendations:** Track `PlaybackHistory`. Suggest Albums based on Genre affinity from the last 30 days.
+- **Donation:** Artist profiles show a "Donate via PIX" button (generates static BR-Code QR).
+
+---
+
+# IMPLEMENTATION PLAN (Step-by-Step)
+
+Please generate the code organized by the following MODULES.
+
+## MODULE 1: BACKEND CORE & DB
+1.  **`package.json` (Root)**: Scripts to install/build both client and server. Deps: `express`, `prisma`, `webtorrent-hybrid`, `multer`, `mime-types`.
+2.  **`prisma/schema.prisma`**:
+    -   `User`: id, storageUsed, pixKey, etc.
+    -   `Track`: id, magnetURI, webSeedUrl, filePath, size, uploadedAt, genreId.
+    -   `PlaybackHistory`, `Genre`, `Artist`, `Album`.
+    -   Datasource: `sqlite`.
+3.  **`src/services/SeedService.ts`**: Singleton. Initializes `webtorrent-hybrid`.
+    -   **Critical:** When seeding, set `urlList` to the server's HTTP stream URL (WebSeed).
+4.  **`src/services/DiskManager.ts`**: Handle file save, delete, and Quota Check (using `fs.stat` recursively).
+
+## MODULE 2: API CONTROLLERS
+1.  **`src/server.ts`**: Express entry point. Serve `/api` routes AND static files from `client/dist`. Catch-all `*` returns `index.html`.
+2.  **`src/controllers/TrackController.ts`**:
+    -   `upload`: Handle Multer -> Check Quota -> Save Disk -> Start Seeding -> Save DB.
+    -   `stream`: HTTP endpoint supporting **Range Requests** (Essential for WebSeed).
+
+## MODULE 3: FRONTEND CONFIG (Vite & Polyfills)
+1.  **`client/vite.config.ts`**:
+    -   Use `vite-plugin-node-polyfills` (Required for `webtorrent` in browser).
+    -   Proxy `/api` to `http://localhost:3000`.
+2.  **`client/tailwind.config.js`**: Dark mode configuration.
+
+## MODULE 4: FRONTEND LOGIC (Hooks)
+1.  **`client/src/hooks/useTorrentPlayer.ts`**: Connects to the tracker, handles magnet links, and manages the buffer.
+2.  **`client/src/services/OPFSManager.ts`**: Wrapper for File System Access API (The Vault).
+3.  **`client/src/services/api.ts`**: Axios wrapper for the backend.
+
+## MODULE 5: UI & PWA
+1.  **`client/src/components/InstallGate.tsx`**: Blocking modal if not installed.
+2.  **`client/src/pages/LibraryDashboard.tsx`**: "Quad-Preview" widgets for Liked content + Storage Usage Bar.
+3.  **`client/src/pages/Discovery.tsx`**: Carousels for "Recent Plays" and "Recommendations".
+4.  **`client/src/pages/Upload.tsx`**: Upload form with progress bar.
+
+## MODULE 6: DEPLOYMENT (Bare Metal)
+1.  **`deploy.sh`**: A bash script for Ubuntu 24.04 Minimal.
+    -   Create Swap (2GB).
+    -   Install Node 20, Python3, Make, G++ (for native build).
+    -   Install PM2, Nginx, Certbot.
+    -   Clone repo, install deps, build React, migrate Prisma.
+    -   Setup Nginx Reverse Proxy & PM2 Startup.
+
+# OUTPUT INSTRUCTION
+Start by generating **MODULE 1**. Wait for my confirmation to proceed to the next module.

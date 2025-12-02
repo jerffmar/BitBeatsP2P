@@ -6,7 +6,6 @@ import { useTorrentPlayer } from './hooks/useTorrentPlayer';
 import { Library } from './pages/Library';
 import { Upload } from './pages/Upload';
 
-// Context interface for passing player controls to children pages
 export interface PlayerContextType {
     currentTrack: Track | null;
     isPlaying: boolean;
@@ -16,13 +15,11 @@ export interface PlayerContextType {
 const App: React.FC = () => {
     const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    
     const audioRef = useRef<HTMLAudioElement>(null);
-    const { play, stats, error: playerError, isBuffering } = useTorrentPlayer();
+    const { play, stats, error: playerError, isBuffering } = useTorrentPlayer(null);
 
     const playTrack = (track: Track) => {
         if (currentTrack?.id === track.id) {
-            // Toggle play/pause
             if (isPlaying) {
                 audioRef.current?.pause();
                 setIsPlaying(false);
@@ -31,11 +28,10 @@ const App: React.FC = () => {
                 setIsPlaying(true);
             }
         } else {
-            // Start new track
             setCurrentTrack(track);
             setIsPlaying(true);
             if (audioRef.current) {
-                play(track.magnetURI, audioRef.current);
+                play(track.magnetURI);
             }
         }
     };
@@ -43,7 +39,6 @@ const App: React.FC = () => {
     return (
         <BrowserRouter>
             <div className="app-shell min-h-screen pb-28 font-sans bg-brand-dark text-slate-200 selection:bg-brand-accent selection:text-brand-dark">
-                {/* Header / Nav */}
                 <header className="bg-brand-card border-b border-gray-700 sticky top-0 z-10">
                     <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
                         <NavLink to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -68,12 +63,11 @@ const App: React.FC = () => {
                     </div>
                 </header>
 
-                {/* Main Content */}
                 <main className="max-w-4xl mx-auto px-4 py-8">
                     <Routes>
                         <Route path="/" element={
                             <Library
-                                onSelectTrack={(track) => setCurrentTrack(track)}
+                                onSelectTrack={setCurrentTrack}
                                 currentTrackId={currentTrack?.id ?? null}
                             />
                         } />
@@ -81,7 +75,6 @@ const App: React.FC = () => {
                     </Routes>
                 </main>
 
-                {/* Persistent Player Footer */}
                 <div className={`fixed bottom-0 left-0 right-0 bg-brand-card border-t border-brand-accent/20 p-4 shadow-2xl backdrop-blur-lg bg-opacity-95 transition-transform duration-300 ${currentTrack ? 'translate-y-0' : 'translate-y-full'}`}>
                     <div className="max-w-4xl mx-auto flex items-center gap-4">
                         <div className="w-12 h-12 bg-gray-800 rounded flex items-center justify-center shrink-0 relative overflow-hidden">

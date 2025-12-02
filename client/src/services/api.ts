@@ -1,8 +1,6 @@
 import axios, { AxiosProgressEvent } from 'axios';
 
-const apiClient = axios.create({
-  baseURL: '/api',
-});
+const apiClient = axios.create({ baseURL: '/api' });
 
 export type TrackDTO = {
   id: number;
