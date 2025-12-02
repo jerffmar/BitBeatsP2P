@@ -3,7 +3,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api', // O Vite proxy irá redirecionar para http://localhost:3000
+  baseURL: import.meta.env.VITE_API_URL || '/api', // O Vite proxy irá redirecionar para http://localhost:3000
   headers: {
     'Content-Type': 'application/json',
   },
@@ -29,6 +29,9 @@ export const uploadTrack = async (file: File) => {
   return response.data;
 };
 
-// TODO: Adicionar outras chamadas de API (e.g., getTracks, getRecommendations, etc.)
+export const getTracks = async () => {
+  const response = await api.get('/tracks');
+  return response.data;
+};
 
 export default api;
