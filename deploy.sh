@@ -17,6 +17,8 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO_URL="${REPO_URL:-https://github.com/your-org/bitbeatsP2P.git}"
+GIT_CLONE_USER="${GIT_CLONE_USER:-}"
+GIT_CLONE_TOKEN="${GIT_CLONE_TOKEN:-}"
 FRONTEND_DIR="/var/www/bitbeats/frontend"
 BACKEND_DIR="/var/www/bitbeats/backend"
 HTML_DIR="/var/www/bitbeats/html"
@@ -98,12 +100,19 @@ ufw --force enable
 
 info "Preparing application directories"
 mkdir -p /var/www/bitbeats
+AUTH_REPO_URL="${REPO_URL}"
+if [[ -n "${GIT_CLONE_USER}" && -n "${GIT_CLONE_TOKEN}" ]]; then
+	info "Using authenticated clone for ${REPO_URL}"
+	AUTH_REPO_URL="$(echo "${REPO_URL}" | sed -E "s#https://#https://${GIT_CLONE_USER}:${GIT_CLONE_TOKEN}@#")"
+else
+	warn "Cloning without credentials; set GIT_CLONE_USER/GIT_CLONE_TOKEN if the repo is private"
+fi
 if [[ -d /var/www/bitbeats/.git ]]; then
 	info "Repository already cloned; pulling latest changes"
 	git -C /var/www/bitbeats pull
 else
 	info "Cloning repository from ${REPO_URL}"
-	git clone "${REPO_URL}" /var/www/bitbeats
+	git clone "${AUTH_REPO_URL}" /var/www/bitbeats
 fi
 
 info "Installing frontend dependencies and building"
