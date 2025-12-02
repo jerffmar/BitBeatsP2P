@@ -28,6 +28,21 @@ set_dir_if_unset() {
 	return 1
 }
 
+auto_detect_dir() {
+	local var_name="$1"
+	shift
+	local keywords=("$@")
+	while IFS= read -r -d '' pkg; do
+		for keyword in "${keywords[@]}"; do
+			if grep -qi "\"${keyword}\"" "$pkg"; then
+				printf -v "${var_name}" '%s' "$(dirname "$pkg")"
+				return 0
+			fi
+		done
+	done < <(find "${REPO_DIR}" -maxdepth 3 -type d -name node_modules -prune -o -type f -name package.json -print0)
+	return 1
+}
+
 require_dir() {
 	local dir="$1"
 	local label="$2"
@@ -144,25 +159,33 @@ else
 	fi
 fi
 
-if ! set_dir_if_unset FRONTEND_DIR \
-	"${REPO_DIR}/frontend" \
-	"${REPO_DIR}/apps/frontend" \
-	"${REPO_DIR}/packages/frontend" \
-	"${REPO_DIR}/client" \
-	"${REPO_DIR}/web"; then
-	error "Unable to locate the frontend directory; set FRONTEND_DIR explicitly."
-	exit 1
+if [[ -z "${FRONTEND_DIR}" ]]; then
+	if ! set_dir_if_unset FRONTEND_DIR \
+		"${REPO_DIR}/frontend" \
+		"${REPO_DIR}/apps/frontend" \
+		"${REPO_DIR}/packages/frontend" \
+		"${REPO_DIR}/client" \
+		"${REPO_DIR}/web"; then
+		auto_detect_dir FRONTEND_DIR react next nuxt vue svelte astro vite angular || {
+			error "Unable to locate the frontend directory; set FRONTEND_DIR explicitly."
+			exit 1
+		}
+	fi
 fi
 info "Using frontend directory: ${FRONTEND_DIR}"
 
-if ! set_dir_if_unset BACKEND_DIR \
-	"${REPO_DIR}/backend" \
-	"${REPO_DIR}/apps/backend" \
-	"${REPO_DIR}/packages/backend" \
-	"${REPO_DIR}/server" \
-	"${REPO_DIR}/api"; then
-	error "Unable to locate the backend directory; set BACKEND_DIR explicitly."
-	exit 1
+if [[ -z "${BACKEND_DIR}" ]]; then
+	if ! set_dir_if_unset BACKEND_DIR \
+		"${REPO_DIR}/backend" \
+		"${REPO_DIR}/apps/backend" \
+		"${REPO_DIR}/packages/backend" \
+		"${REPO_DIR}/server" \
+		"${REPO_DIR}/api"; then
+		auto_detect_dir BACKEND_DIR express fastify nest koa prisma h3 strapi typeorm sequelize || {
+			error "Unable to locate the backend directory; set BACKEND_DIR explicitly."
+			exit 1
+		}
+	fi
 fi
 info "Using backend directory: ${BACKEND_DIR}"
 
