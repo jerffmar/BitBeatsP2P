@@ -11,6 +11,8 @@ info()  { echo -e "${GREEN}[+] ${1}${RESET}"; }
 warn()  { echo -e "${YELLOW}[!] ${1}${RESET}"; }
 error() { echo -e "${RED}[-] ${1}${RESET}"; }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 set_dir_if_unset() {
 	local var_name="$1"
 	shift
@@ -41,10 +43,10 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO_URL="${REPO_URL:-https://github.com/jerffmar/bitbeatsP2P.git}"
-REPO_DIR="/var/www/bitbeats"
+REPO_DIR="${REPO_DIR:-${SCRIPT_DIR}}"
 FRONTEND_DIR="${FRONTEND_DIR:-}"
 BACKEND_DIR="${BACKEND_DIR:-}"
-HTML_DIR="/var/www/bitbeats/html"
+HTML_DIR="${HTML_DIR:-${REPO_DIR}/html}"
 UPLOAD_DIR="/opt/bitbeats/uploads"
 DB_USER="bitbeats"
 DB_NAME="bitbeats_main"
@@ -130,6 +132,7 @@ ufw --force enable
 
 info "Preparing application directories"
 mkdir -p "${REPO_DIR}"
+info "Using repository root: ${REPO_DIR}"
 if [[ -d "${REPO_DIR}/.git" ]]; then
 	info "Repository already cloned; pulling latest changes"
 	git -C "${REPO_DIR}" pull || { error "git pull failed"; exit 1; }
@@ -182,12 +185,12 @@ pushd "${BACKEND_DIR}" >/dev/null
 popd >/dev/null
 
 info "Creating Nginx server block"
-cat <<'EOF' >/etc/nginx/sites-available/bitbeats
+cat <<EOF >/etc/nginx/sites-available/bitbeats
 server {
 	listen 80;
 	server_name _;
 
-	root /var/www/bitbeats/html;
+	root ${HTML_DIR};
 	index index.html;
 
 	gzip on;
@@ -195,22 +198,22 @@ server {
 	gzip_min_length 256;
 
 	location / {
-		try_files $uri /index.html;
+		try_files \$uri /index.html;
 	}
 
 	location /api/ {
 		proxy_pass http://127.0.0.1:3000/;
-		proxy_set_header Host $host;
-		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header Host \$host;
+		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto \$scheme;
 	}
 
 	location /tracker/ {
 		proxy_http_version 1.1;
-		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Upgrade \$http_upgrade;
 		proxy_set_header Connection "upgrade";
 		proxy_pass http://127.0.0.1:3000/tracker/;
-		proxy_set_header Host $host;
+		proxy_set_header Host \$host;
 	}
 }
 EOF
