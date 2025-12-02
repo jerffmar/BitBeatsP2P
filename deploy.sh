@@ -56,9 +56,15 @@ else
 	warn "Node.js already installed; skipping"
 fi
 
+info "Ensuring PM2 is installed"
 if command -v pm2 >/dev/null 2>&1; then
 	warn "PM2 already installed; skipping"
 else
+	PM2_DIR="$(npm root -g)/pm2"
+	if [[ -d "${PM2_DIR}" ]]; then
+		warn "Removing stale PM2 directory at ${PM2_DIR}"
+		rm -rf "${PM2_DIR}"
+	fi
 	npm install -g pm2
 fi
 
