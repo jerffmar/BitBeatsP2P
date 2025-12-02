@@ -1,93 +1,58 @@
-import WebTorrent from "webtorrent-hybrid";
-import { PrismaClient } from "@prisma/client";
+import fs from 'fs';
+import path from 'path';
+import WebTorrent from 'webtorrent-hybrid';
+import { PrismaClient } from '@prisma/client';
 
-type SeedMeta = {
-	trackId?: string;
-	uploadedAt?: Date;
-	webSeedUrl?: string;
+type SeedResult = {
+  magnetURI: string;
+  webSeedUrl: string;
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const RETENTION_MS = 90 * DAY_MS;
+class SeedService {
+  private static instance: SeedService;
+  private client: WebTorrent.Instance;
+  private prisma = new PrismaClient();
+  private baseUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:3000';
 
-export class SeedService {
-	private static instance: SeedService;
-	private client: WebTorrent.Instance;
-	private prisma: PrismaClient;
-	private metaByInfoHash = new Map<string, Required<SeedMeta>>();
-	private trackers = (process.env.TORRENT_TRACKERS?.split(",") ?? [
-		"wss://tracker.openwebtorrent.com",
-		"wss://tracker.btorrent.xyz",
-		"wss://tracker.fastcast.nz"
-	]).map(t => t.trim());
-	private pruneTimer?: NodeJS.Timeout;
+  private constructor() {
+    this.client = new WebTorrent();
+  }
 
-	private constructor() {
-		this.client = new WebTorrent({ tracker: true, dht: false });
-		this.prisma = new PrismaClient();
-	}
+  static getInstance(): SeedService {
+    if (!SeedService.instance) {
+      SeedService.instance = new SeedService();
+    }
+    return SeedService.instance;
+  }
 
-	static getInstance(): SeedService {
-		if (!SeedService.instance) {
-			SeedService.instance = new SeedService();
-		}
-		return SeedService.instance;
-	}
+  async seed(filePath: string): Promise<SeedResult> {
+    const filename = path.basename(filePath);
+    const webSeedUrl = `${this.baseUrl}/uploads/${encodeURIComponent(filename)}`;
 
-	async init(): Promise<void> {
-		const tracks = await this.prisma.track.findMany({
-			select: { id: true, filePath: true, uploadedAt: true, webSeedUrl: true }
-		});
-		for (const track of tracks) {
-			await this.seed(track.filePath, {
-				trackId: track.id,
-				uploadedAt: track.uploadedAt,
-				webSeedUrl: track.webSeedUrl ?? undefined
-			}).catch(err => {
-				console.error(`Failed to seed ${track.id}`, err);
-			});
-		}
-		this.pruneTimer = setInterval(() => void this.prune(), DAY_MS);
-	}
+    return new Promise<SeedResult>((resolve, reject) => {
+      this.client.seed(
+        filePath,
+        { urlList: [webSeedUrl], name: filename },
+        (torrent) => resolve({ magnetURI: torrent.magnetURI, webSeedUrl })
+      ).once('error', reject);
+    });
+  }
 
-	async seed(filePath: string, meta: SeedMeta = {}): Promise<string> {
-		return await new Promise((resolve, reject) => {
-			this.client.seed(
-				filePath,
-				{
-					announce: this.trackers,
-					urlList: meta.webSeedUrl ? [meta.webSeedUrl] : undefined
-				},
-				torrent => {
-					const record: Required<SeedMeta> = {
-						trackId: meta.trackId ?? torrent.infoHash,
-						uploadedAt: meta.uploadedAt ?? new Date(),
-						webSeedUrl: meta.webSeedUrl ?? ""
-					};
-					this.metaByInfoHash.set(torrent.infoHash, record);
-					resolve(torrent.magnetURI);
-				}
-			).once("error", reject);
-		});
-	}
-
-	async prune(): Promise<void> {
-		const now = Date.now();
-		for (const torrent of this.client.torrents) {
-			const meta = this.metaByInfoHash.get(torrent.infoHash);
-			if (!meta) continue;
-			if (now - meta.uploadedAt.getTime() > RETENTION_MS) {
-				await new Promise<void>((resolve, reject) => {
-					torrent.destroy(err => (err ? reject(err) : resolve()));
-				});
-				this.metaByInfoHash.delete(torrent.infoHash);
-			}
-		}
-	}
-
-	shutdown(): void {
-		if (this.pruneTimer) clearInterval(this.pruneTimer);
-		this.client.destroy();
-		this.metaByInfoHash.clear();
-	}
+  async restore(): Promise<void> {
+    const tracks = await this.prisma.track.findMany();
+    for (const track of tracks) {
+      try {
+        await fs.promises.access(track.filePath, fs.constants.R_OK);
+      } catch {
+        continue;
+      }
+      this.client.seed(
+        track.filePath,
+        { urlList: [track.webSeedUrl], name: path.basename(track.filePath) },
+        () => null
+      );
+    }
+  }
 }
+
+export default SeedService;

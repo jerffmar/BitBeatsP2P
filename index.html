@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BitBeats | Hybrid P2P Streaming</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                dark: '#0f172a',
+                accent: '#38bdf8',
+                card: '#1e293b'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <script>
+      // CRITICAL: Polyfill for WebTorrent/Node libs in the browser.
+      // We check undefined to avoid overwriting if a specific polyfill loader ran first.
+      if (typeof global === 'undefined') {
+        window.global = window;
+      }
+      if (typeof process === 'undefined') {
+        window.process = { env: {} };
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "webtorrent-hybrid": "https://aistudiocdn.com/webtorrent-hybrid@^6.0.0",
+    "@prisma/client": "https://aistudiocdn.com/@prisma/client@^7.0.1",
+    "path": "https://aistudiocdn.com/path@^0.12.7",
+    "fs": "https://aistudiocdn.com/fs@^0.0.1-security",
+    "express": "https://aistudiocdn.com/express@^5.2.1",
+    "mime-types": "https://aistudiocdn.com/mime-types@^3.0.2",
+    "multer": "https://aistudiocdn.com/multer@^2.0.2",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "vite": "https://aistudiocdn.com/vite@^7.2.6",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "vite-plugin-node-polyfills": "https://aistudiocdn.com/vite-plugin-node-polyfills@^0.24.0",
+    "axios": "https://aistudiocdn.com/axios@^1.13.2",
+    "webtorrent": "https://aistudiocdn.com/webtorrent@^2.8.5",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.6"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-brand-dark text-slate-200 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

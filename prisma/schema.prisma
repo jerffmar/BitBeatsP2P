@@ -3,124 +3,42 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {
-  id             String            @id @default(cuid())
-  email          String            @unique
-  passwordHash   String
-  displayName    String?
-  storageUsed    BigInt            @default(0)
-  pixKey         String?
-  uploads        Track[]           @relation("UploaderTracks")
-  playback       PlaybackHistory[]
-  likedTracks    TrackLike[]
-  likedAlbums    AlbumLike[]
-  likedArtists   ArtistLike[]
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-}
-
-model Artist {
-  id          String        @id @default(cuid())
-  name        String
-  pixKey      String?
-  albums      Album[]
-  tracks      Track[]
-  likedBy     ArtistLike[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-}
-
-model Album {
-  id          String        @id @default(cuid())
-  title       String
-  coverUrl    String?
-  artist      Artist        @relation(fields: [artistId], references: [id])
-  artistId    String
-  genre       Genre?        @relation(fields: [genreId], references: [id])
-  genreId     String?
-  tracks      Track[]
-  likedBy     AlbumLike[]
-  releasedAt  DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-}
-
-model Genre {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  tracks    Track[]
-  albums    Album[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  storageUsed  BigInt    @default(0)
+  tracks       Track[]
+  history      History[]
 }
 
 model Track {
-  id           String      @id @default(cuid())
-  title        String
-  durationSec  Int?
-  magnetURI    String
-  webSeedUrl   String
-  filePath     String
-  size         BigInt
-  uploadedAt   DateTime    @default(now())
-  seedExpiresAt DateTime?
-  uploader     User        @relation("UploaderTracks", fields: [uploaderId], references: [id])
-  uploaderId   String
-  genre        Genre?      @relation(fields: [genreId], references: [id])
-  genreId      String?
-  artist       Artist?     @relation(fields: [artistId], references: [id])
-  artistId     String?
-  album        Album?      @relation(fields: [albumId], references: [id])
-  albumId      String?
-  playback     PlaybackHistory[]
-  likedBy      TrackLike[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id          Int      @id @default(autoincrement())
+  title       String
+  artist      String
+  duration    Int
+  filePath    String
+  magnetURI   String
+  webSeedUrl  String
+  sizeBytes   BigInt
+  uploadedAt  DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id])
+  userId      Int?
+  histories   History[]
 }
 
-model PlaybackHistory {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  track     Track    @relation(fields: [trackId], references: [id])
-  trackId   String
-  playedAt  DateTime @default(now())
-  context   String?
-}
+model History {
+  id       Int      @id @default(autoincrement())
+  user     User     @relation(fields: [userId], references: [id])
+  userId   Int
+  track    Track    @relation(fields: [trackId], references: [id])
+  trackId  Int
+  playedAt DateTime @default(now())
 
-model TrackLike {
-  id        String  @id @default(cuid())
-  user      User    @relation(fields: [userId], references: [id])
-  userId    String
-  track     Track   @relation(fields: [trackId], references: [id])
-  trackId   String
-  createdAt DateTime @default(now())
-
-  @@unique([userId, trackId])
-}
-
-model AlbumLike {
-  id        String  @id @default(cuid())
-  user      User    @relation(fields: [userId], references: [id])
-  userId    String
-  album     Album   @relation(fields: [albumId], references: [id])
-  albumId   String
-  createdAt DateTime @default(now())
-
-  @@unique([userId, albumId])
-}
-
-model ArtistLike {
-  id        String  @id @default(cuid())
-  user      User    @relation(fields: [userId], references: [id])
-  userId    String
-  artist    Artist  @relation(fields: [artistId], references: [id])
-  artistId  String
-  createdAt DateTime @default(now())
-
-  @@unique([userId, artistId])
+  @@index([userId])
+  @@index([trackId])
 }

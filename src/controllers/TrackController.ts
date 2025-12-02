@@ -1,130 +1,146 @@
-import type { Request, Response, NextFunction } from "express";
-import multer from "multer";
-import { ensureDir } from "fs-extra";
-import { stat } from "node:fs/promises";
-import { createReadStream } from "node:fs";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
-import mime from "mime-types";
-import { PrismaClient } from "@prisma/client";
-import { DiskManager } from "../services/DiskManager";
-import { SeedService } from "../services/SeedService";
+import fs from 'fs';
+import path from 'path';
+import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
+import mime from 'mime-types';
+import { PrismaClient } from '@prisma/client';
+import SeedService from '../services/SeedService';
 
 const prisma = new PrismaClient();
-const diskManager = DiskManager.getInstance();
-const seedService = SeedService.getInstance();
-const upload = multer({ dest: DiskManager.tempDir() });
+const uploadDir = path.resolve(process.cwd(), 'uploads');
+const TEN_GB = BigInt(10 * 1024 * 1024 * 1024);
 
-const STREAM_BASE = (process.env.WEB_SEED_BASE_URL ?? process.env.API_BASE_URL ?? "https://api.bitbeats.com").replace(/\/$/, "");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-export class TrackController {
-	static uploadMiddleware = upload.single("file");
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (_req, file, cb) => {
+    const stamp = Date.now();
+    const ext = path.extname(file.originalname);
+    cb(null, `${stamp}-${file.fieldname}${ext}`);
+  },
+});
 
-	static async upload(req: Request, res: Response, next: NextFunction): Promise<void> {
-		try {
-			const userId = (req as any).user?.id ?? req.body.userId;
-			if (!userId) {
-				res.status(401).json({ message: "Missing user context" });
-				return;
-			}
-			const file = req.file;
-			if (!file) {
-				res.status(400).json({ message: "No file provided" });
-				return;
-			}
-			if (!(await diskManager.checkQuota(userId, file.size))) {
-				res.status(413).json({ message: "Storage quota exceeded (10GB limit)" });
-				return;
-			}
-			const storedPath = await diskManager.saveFile(userId, file);
-			const trackId = randomUUID();
-			const webSeedUrl = `${STREAM_BASE}/api/stream/${trackId}`;
-			const magnetURI = await seedService.seed(storedPath, {
-				trackId,
-				uploadedAt: new Date(),
-				webSeedUrl
-			});
-			const magnetWithWs = magnetURI.includes("&ws=")
-				? magnetURI
-				: `${magnetURI}&ws=${encodeURIComponent(webSeedUrl)}`;
+const upload = multer({ storage });
 
-			const track = await prisma.track.create({
-				data: {
-					id: trackId,
-					title: req.body.title ?? file.originalname,
-					magnetURI: magnetWithWs,
-					webSeedUrl,
-					filePath: storedPath,
-					size: BigInt(file.size),
-					uploadedAt: new Date(),
-					uploaderId: userId,
-					genreId: req.body.genreId ?? null,
-					artistId: req.body.artistId ?? null,
-					albumId: req.body.albumId ?? null
-				}
-			});
+export const trackRouter = Router();
 
-			await prisma.user.update({
-				where: { id: userId },
-				data: { storageUsed: { increment: BigInt(file.size) } }
-			});
+trackRouter.post(
+  '/upload',
+  upload.single('track'),
+  (req, res, next) => TrackController.upload(req, res, next)
+);
+trackRouter.get('/tracks', (req, res) => TrackController.list(req, res));
+trackRouter.get('/stream/:id', (req, res, next) => TrackController.stream(req, res, next));
 
-			res.status(201).json({ track });
-		} catch (error) {
-			next(error);
-		}
-	}
+class TrackController {
+  static async upload(req: Request, res: Response, next: NextFunction) {
+    try {
+      const file = req.file;
+      const { userId, username, title, artist, duration = 0 } = req.body;
 
-	static async stream(req: Request, res: Response, next: NextFunction): Promise<void> {
-		try {
-			const track = await prisma.track.findUnique({
-				where: { id: req.params.id },
-				select: { filePath: true }
-			});
-			if (!track) {
-				res.sendStatus(404);
-				return;
-			}
-			const filePath = track.filePath;
-			await ensureDir(join(filePath, "..")); // noop if exists
-			const fileStat = await stat(filePath);
-			const fileSize = fileStat.size;
-			const range = req.headers.range;
-			const mimeType = mime.lookup(filePath) || "application/octet-stream";
+      if (!file) return res.status(400).json({ message: 'Audio file is required.' });
+      if (!userId) return res.status(400).json({ message: 'userId is required.' });
+      if (!username) return res.status(400).json({ message: 'username is required.' });
+      if (!title || !artist) return res.status(400).json({ message: 'title and artist are required.' });
 
-			if (range) {
-				const matches = /bytes=(\d*)-(\d*)/.exec(range);
-				if (!matches) {
-					res.status(416).send("Invalid Range");
-					return;
-				}
-				const start = matches[1] ? parseInt(matches[1], 10) : 0;
-				const end = matches[2] ? parseInt(matches[2], 10) : fileSize - 1;
-				if (start >= fileSize || end >= fileSize || start > end) {
-					res.status(416).send("Requested range not satisfiable");
-					return;
-				}
-				const chunkSize = end - start + 1;
-				res.status(206);
-				res.set({
-					"Content-Range": `bytes ${start}-${end}/${fileSize}`,
-					"Accept-Ranges": "bytes",
-					"Content-Length": chunkSize,
-					"Content-Type": mimeType
-				});
-				createReadStream(filePath, { start, end }).pipe(res);
-				return;
-			}
+      const sizeBigInt = BigInt(file.size);
+      const parsedUserId = Number(userId);
 
-			res.status(200);
-			res.set({
-				"Content-Length": fileSize,
-				"Content-Type": mimeType,
-				"Accept-Ranges": "bytes"
-			});
-			createReadStream(filePath).pipe(res);
-		} catch (error) {
-			next(error);
-		}
-	}
+      const user = await prisma.user.upsert({
+        where: { id: parsedUserId },
+        update: {},
+        create: {
+          id: parsedUserId,
+          username,
+          passwordHash: '',
+        },
+      });
+
+      if (user.storageUsed + sizeBigInt > TEN_GB) {
+        fs.unlink(file.path, () => null);
+        return res.status(413).json({ message: 'Storage quota exceeded (10GB).' });
+      }
+
+      const seedService = SeedService.getInstance();
+      const { magnetURI, webSeedUrl } = await seedService.seed(file.path);
+
+      const [updatedUser, track] = await prisma.$transaction([
+        prisma.user.update({
+          where: { id: parsedUserId },
+          data: { storageUsed: user.storageUsed + sizeBigInt },
+        }),
+        prisma.track.create({
+          data: {
+            title,
+            artist,
+            duration: Number(duration),
+            filePath: file.path,
+            magnetURI,
+            webSeedUrl,
+            sizeBytes: sizeBigInt,
+            userId: parsedUserId,
+          },
+        }),
+      ]);
+
+      res.status(201).json({ track, user: updatedUser });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async list(_req: Request, res: Response) {
+    const tracks = await prisma.track.findMany({ orderBy: { uploadedAt: 'desc' } });
+    res.json(tracks);
+  }
+
+  static async stream(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const track = await prisma.track.findUnique({ where: { id } });
+      if (!track) return res.status(404).json({ message: 'Track not found.' });
+
+      const stat = await fs.promises.stat(track.filePath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+      const mimeType = mime.lookup(track.filePath) || 'application/octet-stream';
+
+      if (!range) {
+        res.writeHead(200, {
+          'Content-Length': fileSize,
+          'Content-Type': mimeType,
+        });
+        fs.createReadStream(track.filePath).pipe(res);
+        return;
+      }
+
+      const bytesPrefix = 'bytes=';
+      if (!range.startsWith(bytesPrefix)) {
+        return res.status(416).json({ message: 'Invalid Range header.' });
+      }
+
+      const [startStr, endStr] = range.replace(bytesPrefix, '').split('-');
+      const start = Number(startStr);
+      const end = endStr ? Number(endStr) : fileSize - 1;
+
+      if (Number.isNaN(start) || Number.isNaN(end) || start > end || end >= fileSize) {
+        return res.status(416).json({ message: 'Range Not Satisfiable' });
+      }
+
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': mimeType,
+      });
+
+      fs.createReadStream(track.filePath, { start, end }).pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
