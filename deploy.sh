@@ -16,7 +16,7 @@ if [[ $EUID -ne 0 ]]; then
 	exit 1
 fi
 
-REPO_URL="${REPO_URL:-https://github.com/your-org/bitbeats-hybrid.git}"
+REPO_URL="${REPO_URL:-https://github.com/your-org/bitbeatsP2P.git}"
 FRONTEND_DIR="/var/www/bitbeats/frontend"
 BACKEND_DIR="/var/www/bitbeats/backend"
 HTML_DIR="/var/www/bitbeats/html"

@@ -1,17 +1,16 @@
-import { mkdir, stat, readdir, unlink, rename } from "node:fs/promises";
+import { ensureDir, move } from "fs-extra";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
+import type { Express } from "express";
+import getFolderSizeCb from "get-folder-size";
 
-const BYTES_IN_GB = 1024 ** 3;
+const getFolderSize = promisify(getFolderSizeCb);
+const MAX_BYTES = 10 * 1024 * 1024 * 1024;
+const STORAGE_PATH = (process.env.STORAGE_PATH ?? "/var/www/bitbeats/uploads").replace(/\/$/, "");
 
 export class DiskManager {
 	private static instance: DiskManager;
-	private readonly rootDir: string;
-	private readonly quotaBytes: number;
-
-	private constructor(rootDir = "/opt/bitbeats/uploads", quotaGb = 10) {
-		this.rootDir = rootDir;
-		this.quotaBytes = quotaGb * BYTES_IN_GB;
-	}
 
 	static getInstance(): DiskManager {
 		if (!DiskManager.instance) {
@@ -20,51 +19,26 @@ export class DiskManager {
 		return DiskManager.instance;
 	}
 
-	async init(): Promise<void> {
-		await mkdir(this.rootDir, { recursive: true });
+	private getUserDir(userId: string): string {
+		return join(STORAGE_PATH, userId);
 	}
 
-	getUploadPath(filename: string): string {
-		return join(this.rootDir, filename);
+	async checkQuota(userId: string, incomingBytes: number): Promise<boolean> {
+		const dir = this.getUserDir(userId);
+		await ensureDir(dir);
+		const current = await getFolderSize(dir).catch(() => 0);
+		return current + incomingBytes <= MAX_BYTES;
 	}
 
-	async getDirectorySize(dir: string = this.rootDir): Promise<number> {
-		let size = 0;
-		const entries = await readdir(dir, { withFileTypes: true });
-		for (const entry of entries) {
-			const path = join(dir, entry.name);
-			const stats = await stat(path);
-			if (stats.isDirectory()) {
-				size += await this.getDirectorySize(path);
-			} else {
-				size += stats.size;
-			}
-		}
-		return size;
+	async saveFile(userId: string, file: Express.Multer.File): Promise<string> {
+		const dir = this.getUserDir(userId);
+		await ensureDir(dir);
+		const destination = join(dir, file.originalname);
+		await move(file.path, destination, { overwrite: true });
+		return destination;
 	}
 
-	async assertQuota(incomingBytes: number): Promise<void> {
-		const current = await this.getDirectorySize();
-		if (current + incomingBytes > this.quotaBytes) {
-			const usedGb = ((current + incomingBytes) / BYTES_IN_GB).toFixed(2);
-			throw new Error(`Storage quota exceeded: attempting to use ${usedGb} GB of 10 GB.`);
-		}
-	}
-
-	async persistTempFile(tempPath: string, destinationName: string): Promise<string> {
-		const destPath = this.getUploadPath(destinationName);
-		await this.assertQuota((await stat(tempPath)).size);
-		await rename(tempPath, destPath);
-		return destPath;
-	}
-
-	async removeFile(filePath: string): Promise<void> {
-		try {
-			await unlink(filePath);
-		} catch (error: unknown) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw error;
-			}
-		}
+	static tempDir(): string {
+		return join(tmpdir(), "bitbeats-temp");
 	}
 }

@@ -1,23 +1,30 @@
-import WebTorrent, { Torrent, TorrentOptions } from "webtorrent-hybrid";
-import type { Track } from "@prisma/client";
+import WebTorrent from "webtorrent-hybrid";
+import { PrismaClient } from "@prisma/client";
 
-type SeedableTrack = Pick<Track, "id" | "filePath" | "webSeedUrl" | "uploadedAt">;
+type SeedMeta = {
+	trackId?: string;
+	uploadedAt?: Date;
+	webSeedUrl?: string;
+};
 
-const RETENTION_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const RETENTION_MS = 90 * DAY_MS;
 
 export class SeedService {
 	private static instance: SeedService;
 	private client: WebTorrent.Instance;
-	private seeded: Map<string, Torrent>;
-	private pruneInterval?: NodeJS.Timeout;
+	private prisma: PrismaClient;
+	private metaByInfoHash = new Map<string, Required<SeedMeta>>();
+	private trackers = (process.env.TORRENT_TRACKERS?.split(",") ?? [
+		"wss://tracker.openwebtorrent.com",
+		"wss://tracker.btorrent.xyz",
+		"wss://tracker.fastcast.nz"
+	]).map(t => t.trim());
+	private pruneTimer?: NodeJS.Timeout;
 
 	private constructor() {
-		this.client = new WebTorrent({
-			tracker: true,
-			dht: false
-		});
-		this.seeded = new Map();
+		this.client = new WebTorrent({ tracker: true, dht: false });
+		this.prisma = new PrismaClient();
 	}
 
 	static getInstance(): SeedService {
@@ -27,69 +34,60 @@ export class SeedService {
 		return SeedService.instance;
 	}
 
-	async init(existingTracks: SeedableTrack[]): Promise<void> {
-		for (const track of existingTracks) {
-			const expired = this.isExpired(track.uploadedAt);
-			if (!expired) {
-				await this.seedTrack(track);
-			}
-		}
-		this.pruneInterval = setInterval(() => void this.pruneExpiredSeeds(), DAY_MS);
-	}
-
-	async seedTrack(track: SeedableTrack): Promise<Torrent> {
-		if (this.seeded.has(track.id)) {
-			return this.seeded.get(track.id)!;
-		}
-		const options: TorrentOptions = {
-			path: track.filePath,
-			announce: [
-				"wss://tracker.openwebtorrent.com",
-				"wss://tracker.btorrent.xyz",
-				"wss://tracker.fastcast.nz"
-			],
-			webSeeds: [track.webSeedUrl]
-		};
-
-		return await new Promise<Torrent>((resolve, reject) => {
-			this.client.seed(track.filePath, options, torrent => {
-				this.seeded.set(track.id, torrent);
-				resolve(torrent);
-			}).once("error", reject);
+	async init(): Promise<void> {
+		const tracks = await this.prisma.track.findMany({
+			select: { id: true, filePath: true, uploadedAt: true, webSeedUrl: true }
 		});
-	}
-
-	async removeTrack(trackId: string): Promise<void> {
-		const torrent = this.seeded.get(trackId);
-		if (!torrent) {
-			return;
-		}
-		await new Promise<void>((resolve, reject) => {
-			torrent.destroy(err => {
-				if (err) return reject(err);
-				this.seeded.delete(trackId);
-				resolve();
+		for (const track of tracks) {
+			await this.seed(track.filePath, {
+				trackId: track.id,
+				uploadedAt: track.uploadedAt,
+				webSeedUrl: track.webSeedUrl ?? undefined
+			}).catch(err => {
+				console.error(`Failed to seed ${track.id}`, err);
 			});
+		}
+		this.pruneTimer = setInterval(() => void this.prune(), DAY_MS);
+	}
+
+	async seed(filePath: string, meta: SeedMeta = {}): Promise<string> {
+		return await new Promise((resolve, reject) => {
+			this.client.seed(
+				filePath,
+				{
+					announce: this.trackers,
+					urlList: meta.webSeedUrl ? [meta.webSeedUrl] : undefined
+				},
+				torrent => {
+					const record: Required<SeedMeta> = {
+						trackId: meta.trackId ?? torrent.infoHash,
+						uploadedAt: meta.uploadedAt ?? new Date(),
+						webSeedUrl: meta.webSeedUrl ?? ""
+					};
+					this.metaByInfoHash.set(torrent.infoHash, record);
+					resolve(torrent.magnetURI);
+				}
+			).once("error", reject);
 		});
 	}
 
-	private isExpired(uploadedAt: Date): boolean {
-		return Date.now() - uploadedAt.getTime() > RETENTION_DAYS * DAY_MS;
-	}
-
-	private async pruneExpiredSeeds(): Promise<void> {
-		for (const [trackId, torrent] of this.seeded.entries()) {
-			const uploadedAt = new Date(torrent.created || Date.now());
-			if (this.isExpired(uploadedAt)) {
-				await this.removeTrack(trackId);
+	async prune(): Promise<void> {
+		const now = Date.now();
+		for (const torrent of this.client.torrents) {
+			const meta = this.metaByInfoHash.get(torrent.infoHash);
+			if (!meta) continue;
+			if (now - meta.uploadedAt.getTime() > RETENTION_MS) {
+				await new Promise<void>((resolve, reject) => {
+					torrent.destroy(err => (err ? reject(err) : resolve()));
+				});
+				this.metaByInfoHash.delete(torrent.infoHash);
 			}
 		}
 	}
 
 	shutdown(): void {
-		if (this.pruneInterval) {
-			clearInterval(this.pruneInterval);
-		}
+		if (this.pruneTimer) clearInterval(this.pruneTimer);
 		this.client.destroy();
+		this.metaByInfoHash.clear();
 	}
 }
