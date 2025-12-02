@@ -11,6 +11,21 @@ info()  { echo -e "${GREEN}[+] ${1}${RESET}"; }
 warn()  { echo -e "${YELLOW}[!] ${1}${RESET}"; }
 error() { echo -e "${RED}[-] ${1}${RESET}"; }
 
+set_dir_if_unset() {
+	local var_name="$1"
+	shift
+	if [[ -n "${!var_name:-}" ]]; then
+		return 0
+	fi
+	for candidate in "$@"; do
+		if [[ -d "${candidate}" ]]; then
+			printf -v "${var_name}" '%s' "${candidate}"
+			return 0
+		fi
+	done
+	return 1
+}
+
 require_dir() {
 	local dir="$1"
 	local label="$2"
@@ -26,8 +41,9 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO_URL="${REPO_URL:-https://github.com/jerffmar/bitbeatsP2P.git}"
-FRONTEND_DIR="/var/www/bitbeats/frontend"
-BACKEND_DIR="/var/www/bitbeats/backend"
+REPO_DIR="/var/www/bitbeats"
+FRONTEND_DIR="${FRONTEND_DIR:-}"
+BACKEND_DIR="${BACKEND_DIR:-}"
 HTML_DIR="/var/www/bitbeats/html"
 UPLOAD_DIR="/opt/bitbeats/uploads"
 DB_USER="bitbeats"
@@ -113,17 +129,39 @@ ufw allow 6881/udp
 ufw --force enable
 
 info "Preparing application directories"
-mkdir -p /var/www/bitbeats
-if [[ -d /var/www/bitbeats/.git ]]; then
+mkdir -p "${REPO_DIR}"
+if [[ -d "${REPO_DIR}/.git" ]]; then
 	info "Repository already cloned; pulling latest changes"
-	git -C /var/www/bitbeats pull || { error "git pull failed"; exit 1; }
+	git -C "${REPO_DIR}" pull || { error "git pull failed"; exit 1; }
 else
 	info "Cloning repository from ${REPO_URL}"
-	if ! git clone "${REPO_URL}" /var/www/bitbeats; then
+	if ! git clone "${REPO_URL}" "${REPO_DIR}"; then
 		error "git clone failed – verify repo access"
 		exit 1
 	fi
 fi
+
+if ! set_dir_if_unset FRONTEND_DIR \
+	"${REPO_DIR}/frontend" \
+	"${REPO_DIR}/apps/frontend" \
+	"${REPO_DIR}/packages/frontend" \
+	"${REPO_DIR}/client" \
+	"${REPO_DIR}/web"; then
+	error "Unable to locate the frontend directory; set FRONTEND_DIR explicitly."
+	exit 1
+fi
+info "Using frontend directory: ${FRONTEND_DIR}"
+
+if ! set_dir_if_unset BACKEND_DIR \
+	"${REPO_DIR}/backend" \
+	"${REPO_DIR}/apps/backend" \
+	"${REPO_DIR}/packages/backend" \
+	"${REPO_DIR}/server" \
+	"${REPO_DIR}/api"; then
+	error "Unable to locate the backend directory; set BACKEND_DIR explicitly."
+	exit 1
+fi
+info "Using backend directory: ${BACKEND_DIR}"
 
 require_dir "${FRONTEND_DIR}" "FRONTEND"
 info "Installing frontend dependencies and building"
