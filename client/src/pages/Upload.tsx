@@ -80,8 +80,12 @@ export const Upload = () => {
       setUploading(true);
       await api.upload(formData, setProgress);
       navigate('/');
-    } catch {
-      setError('Upload failed. Please try again.');
+    } catch (err: any) {
+      const serverMessage =
+        err?.response?.data?.error ||
+        err?.message ||
+        'Upload failed. Please try again.';
+      setError(serverMessage);
     } finally {
       setUploading(false);
     }
