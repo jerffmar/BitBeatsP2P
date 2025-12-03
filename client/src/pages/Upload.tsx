@@ -41,7 +41,7 @@ export const Upload = () => {
     }
 
     const formData = new FormData();
-    formData.append('track', file);
+    formData.append('trackFile', file);
     formData.append('title', title);
     formData.append('artist', artist);
     formData.append('duration', duration || '0');

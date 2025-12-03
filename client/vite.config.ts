@@ -14,6 +14,7 @@ export default defineConfig({
     nodePolyfills(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['icons/icon-192x192.svg', 'icons/icon-512x512.svg'],
       manifest: {
         name: 'BitBeats',

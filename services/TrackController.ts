@@ -20,7 +20,11 @@ export class TrackController {
     public router: Router = Router();
 
     constructor() {
-        this.router.post('/upload', upload.single('trackFile'), this.uploadTrack);
+        this.router.post('/upload', upload.fields([
+            { name: 'trackFile', maxCount: 1 },
+            { name: 'file', maxCount: 1 },
+        ]), this.uploadTrack);
+        this.router.get('/tracks', this.listTracks);
         this.router.get('/stream/:trackId', this.streamTrack);
     }
 
@@ -29,22 +33,21 @@ export class TrackController {
      * Multer -> Check Quota -> Save Disk -> Start Seeding -> Save DB.
      */
     private uploadTrack = async (req: Request, res: Response, next: NextFunction) => {
-        if (!req.file) {
+        const uploadedFile = this.resolveUploadedFile(req);
+        if (!uploadedFile) {
             return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
         }
 
-        // Simulação de autenticação de usuário (substituir por lógica real)
+        let tempFilePath: string | null = uploadedFile.path;
         const userId = 1; // HARDCODED para fins de demonstração
 
         try {
-            const fileSize = req.file.size;
-            const tempPath = req.file.path;
-            const originalName = req.file.originalname;
+            const fileSize = uploadedFile.size;
+            const tempPath = uploadedFile.path;
+            const originalName = uploadedFile.originalname;
 
-            // 1. Check Quota
             const hasQuota = await diskManager.checkQuota(userId, fileSize);
             if (!hasQuota) {
-                // Limpa o arquivo temporário
                 await fs.promises.unlink(tempPath);
                 return res.status(403).json({ error: 'Cota de armazenamento excedida.' });
             }
@@ -88,9 +91,8 @@ export class TrackController {
 
         } catch (error) {
             console.error('Erro no upload da faixa:', error);
-            // Tenta limpar o arquivo temporário se existir
-            if (req.file && fs.existsSync(req.file.path)) {
-                await fs.promises.unlink(req.file.path).catch(err => console.error('Erro ao limpar arquivo temporário:', err));
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                await fs.promises.unlink(tempFilePath).catch(err => console.error('Erro ao limpar arquivo temporário:', err));
             }
             res.status(500).json({ error: 'Erro interno do servidor durante o upload.' });
         }
@@ -148,6 +150,43 @@ export class TrackController {
         } catch (error) {
             console.error(`Erro ao fazer stream da faixa ${trackId}:`, error);
             res.status(500).send('Erro interno do servidor ao fazer stream.');
+        }
+    };
+
+    private resolveUploadedFile(req: Request): Express.Multer.File | undefined {
+        if (req.file) return req.file;
+        const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+        return files?.trackFile?.[0] ?? files?.file?.[0];
+    }
+
+    private listTracks = async (_req: Request, res: Response) => {
+        try {
+            const tracks = await prisma.track.findMany({
+                orderBy: { uploadedAt: 'desc' },
+                select: {
+                    id: true,
+                    title: true,
+                    artist: true,
+                    album: true,
+                    magnetURI: true,
+                    size: true,
+                    uploadedAt: true,
+                },
+            });
+
+            res.json(tracks.map((track) => ({
+                id: track.id,
+                title: track.title,
+                artist: track.artist,
+                album: track.album,
+                magnetURI: track.magnetURI,
+                duration: 0,
+                sizeBytes: track.size.toString(),
+                uploadedAt: track.uploadedAt.toISOString(),
+            })));
+        } catch (error) {
+            console.error('Erro ao listar faixas:', error);
+            res.status(500).json({ error: 'Erro ao listar faixas.' });
         }
     };
 }

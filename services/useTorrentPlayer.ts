@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import WebTorrent from 'webtorrent';
-import { OPFSManager } from '../services/OPFSManager';
+import { OPFSManager } from './OPFSManager';
 
 // Inicializa o cliente WebTorrent (apenas no navegador)
 const client = new WebTorrent({
