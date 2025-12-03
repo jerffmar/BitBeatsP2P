@@ -64,6 +64,7 @@ import { discoverLocalPeers, signUpload } from './services/p2pNetwork';
 import { initTorrentClient, seedFile, addTorrent } from './services/torrent';
 import { analyzeAudio, normalizeAndTranscode } from './services/audioEngine';
 import { searchGlobalCatalog } from './services/musicBrainz';
+import { api, TrackDTO } from './services/api';
 
 interface SearchBundle {
   available: Track[];
@@ -181,11 +182,43 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const refreshSeededLibrary = useCallback(async () => {
+    try {
+      const serverTracks = await api.getTracks();
+      const normalized: Track[] = serverTracks.map((dto: TrackDTO) => ({
+        id: dto.id.toString(),
+        title: dto.title ?? 'Untitled Upload',
+        artist: dto.artist ?? 'Unknown Artist',
+        album: dto.album ?? 'Uploads',
+        coverUrl: 'https://images.unsplash.com/photo-1511376777868-611b54f68947?auto=format&fit=crop&w=600&q=60',
+        audioUrl: dto.magnetURI,
+        duration: dto.duration ?? 0,
+        sizeMB: Number(dto.sizeBytes ?? 0) / (1024 * 1024),
+      }));
+      const normalizedIds = new Set(normalized.map((track) => track.id));
+      setTracks((prev) => {
+        const extras = prev.filter((track) => !normalizedIds.has(track.id));
+        return [...normalized, ...extras];
+      });
+      const totalBytes = serverTracks.reduce((sum, dto) => sum + Number(dto.sizeBytes ?? 0), 0);
+      setUsageMB(totalBytes / (1024 * 1024));
+    } catch (error) {
+      console.error('Failed to refresh seeded library', error);
+      try {
+        const bytes = await getStoredBytes();
+        setUsageMB(bytes / (1024 * 1024));
+      } catch (vaultError) {
+        console.error('Failed to read local vault usage', vaultError);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     initDB();
     initTorrentClient();
     discoverLocalPeers().then(setActivePeers);
+    refreshSeededLibrary();
 
     const tearDowns: Array<() => void> = [];
     tearDowns.push(
@@ -249,21 +282,14 @@ const App: React.FC = () => {
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
     };
-  }, [user]);
+  }, [user, refreshSeededLibrary]);
 
   useEffect(() => {
-    getStoredBytes().then((bytes: number) => setUsageMB(bytes / (1024 * 1024)));
-  }, [library]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const q = params.get('q');
-    const type = params.get('type');
-    if (q) setSearchQuery(q);
-    if (type === 'SONG' || type === 'ALBUM' || type === 'ARTIST' || type === 'ALL') {
-      setSearchFilter(type);
+    if (!user) return;
+    if (location.pathname === '/library') {
+      refreshSeededLibrary();
     }
-  }, [location.search]);
+  }, [location.pathname, user, refreshSeededLibrary]);
 
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -325,21 +351,48 @@ const App: React.FC = () => {
         console.log('Transcoding complete');
         const signed = await signUpload(file, analysis.fingerprint);
         console.log('Signing complete');
+        const normalizedSizeMB = transposed.byteLength / (1024 * 1024);
+        const localTrackId = (crypto as Crypto)?.randomUUID?.() ?? `local-${Date.now()}`;
         const magnet = await seedFile(new File([transposed], `${metadata.artist}-${metadata.title}.wav`, { type: 'audio/wav' }), metadata.title);
         console.log('Seeding complete, magnet:', magnet);
+
+        const optimisticTrack: Track = {
+          id: localTrackId,
+          title: metadata.title,
+          artist: metadata.artist,
+          album: metadata.album ?? 'Unreleased',
+          coverUrl: currentTrack?.coverUrl ?? 'https://images.unsplash.com/photo-1511376777868-611b54f68947?auto=format&fit=crop&w=600&q=60',
+          audioUrl: magnet,
+          duration: analysis.duration,
+          sizeMB: normalizedSizeMB,
+        };
+
+        setTracks((prev) => [optimisticTrack, ...prev]);
+        setLibrary((prev) => ({
+          ...prev,
+          [localTrackId]: {
+            trackId: localTrackId,
+            status: 'SEEDING',
+            progress: 1,
+            addedAt: Date.now(),
+            lastPlayed: Date.now(),
+          },
+        }));
+        setUsageMB((prev) => prev + normalizedSizeMB);
+
         await publishTrackMetadata({
           title: metadata.title,
           artist: metadata.artist,
           album: metadata.album ?? 'Unreleased',
           duration: analysis.duration,
           audioUrl: magnet,
-          coverUrl: currentTrack?.coverUrl ?? 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=600&q=60',
+          coverUrl: optimisticTrack.coverUrl,
           license: 'CC-BY',
           tags: ['vault', 'import'],
           artistSignature: signed,
         });
         console.log('Track metadata published successfully');
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error during local import:', error);
         alert(`Import failed: ${error.message || 'Unknown error'}`);
       }

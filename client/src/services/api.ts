@@ -10,6 +10,7 @@ export type TrackDTO = {
   id: number;
   title: string;
   artist: string;
+  album?: string;
   duration: number;
   magnetURI: string;
   sizeBytes: string;
