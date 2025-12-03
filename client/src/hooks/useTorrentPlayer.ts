@@ -23,7 +23,14 @@ export const useTorrentPlayer = () => {
   const [isBuffering, setIsBuffering] = useState(false);
 
   useEffect(() => {
-    clientRef.current = new WebTorrent();
+    clientRef.current = new WebTorrent({
+      dht: false,
+      tracker: {
+        rtcConfig: {
+          iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+        },
+      },
+    });
     return () => clientRef.current?.destroy();
   }, []);
 

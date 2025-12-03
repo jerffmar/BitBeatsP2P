@@ -5,7 +5,15 @@ import WebTorrent from 'webtorrent';
 import { OPFSManager } from '../services/OPFSManager';
 
 // Inicializa o cliente WebTorrent (apenas no navegador)
-const client = new WebTorrent();
+const client = new WebTorrent({
+  dht: false,
+  tracker: {
+    rtcConfig: {
+      iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+    },
+  },
+});
+
 client.on('error', (err) => {
   console.error('WebTorrent Client Error:', err.message);
 });
