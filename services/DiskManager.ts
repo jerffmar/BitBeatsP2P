@@ -3,7 +3,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { constants } from 'fs';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 const MAX_QUOTA_BYTES = parseInt(process.env.MAX_USER_QUOTA_GB || '10') * 1024 * 1024 * 1024; // 10GB default
@@ -32,7 +32,15 @@ export class DiskManager {
      * @returns true se houver cota, false caso contrário.
      */
     public async checkQuota(userId: number, fileSize: number): Promise<boolean> {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        let user;
+        try {
+            user = await this.prisma.user.findUnique({ where: { id: userId } });
+        } catch (error) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+                throw new Error('Tabela User ausente. Execute `npx prisma migrate deploy` antes de fazer uploads.');
+            }
+            throw error;
+        }
 
         if (!user) {
             throw new Error(`Usuário com ID ${userId} não encontrado.`);

@@ -1,6 +1,10 @@
 import axios, { AxiosProgressEvent } from 'axios';
 
-const apiClient = axios.create({ baseURL: '/api' });
+const apiClient = axios.create({
+  baseURL: '/api',
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity,
+});
 
 export type TrackDTO = {
   id: number;
@@ -15,6 +19,8 @@ export type TrackDTO = {
 const upload = (formData: FormData, onProgress?: (pct: number) => void) =>
   apiClient.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
     onUploadProgress: (evt: AxiosProgressEvent) => {
       if (evt.total && onProgress) onProgress(Math.round((evt.loaded / evt.total) * 100));
     },

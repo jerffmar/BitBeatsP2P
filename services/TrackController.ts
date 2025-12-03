@@ -8,6 +8,7 @@ import { DiskManager } from './DiskManager';
 import { SeedService } from './SeedService';
 import prisma from './db';
 import mime from 'mime-types';
+import { Prisma } from '@prisma/client';
 
 // Configuração do Multer para upload temporário
 const upload = multer({ dest: path.join(process.cwd(), 'temp_uploads/') });
@@ -93,6 +94,12 @@ export class TrackController {
             console.error('Erro no upload da faixa:', error);
             if (tempFilePath && fs.existsSync(tempFilePath)) {
                 await fs.promises.unlink(tempFilePath).catch(err => console.error('Erro ao limpar arquivo temporário:', err));
+            }
+            if (this.isSchemaMissingError(error)) {
+                const message = error instanceof Error && error.message
+                    ? error.message
+                    : 'Schema do banco ausente. Execute `npx prisma migrate deploy` antes de usar a API.';
+                return res.status(503).json({ error: message });
             }
             res.status(500).json({ error: 'Erro interno do servidor durante o upload.' });
         }
@@ -186,7 +193,23 @@ export class TrackController {
             })));
         } catch (error) {
             console.error('Erro ao listar faixas:', error);
+            if (this.isSchemaMissingError(error, 'Track')) {
+                return res.status(503).json({
+                    error: 'Schema do banco ausente. Execute `npx prisma migrate deploy` antes de usar a API.',
+                });
+            }
             res.status(500).json({ error: 'Erro ao listar faixas.' });
         }
     };
+
+    private isSchemaMissingError(error: unknown, modelName?: string): boolean {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+            const metaModel = (error.meta as { modelName?: string } | undefined)?.modelName;
+            return modelName ? metaModel === modelName : true;
+        }
+        if (error instanceof Error && error.message.includes('Tabela User ausente')) {
+            return true;
+        }
+        return false;
+    }
 }

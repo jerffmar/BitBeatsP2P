@@ -220,6 +220,7 @@ server {
 server {
     listen 443 ssl default_server;
     server_name _;
+    client_max_body_size 200m;
 
     ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
     ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
@@ -253,9 +254,7 @@ if [ "$USER_NAME" != "root" ]; then
 fi
 
 SERVER_ENTRY=$(resolve_server_entry) || error "Arquivo de entrada do servidor não encontrado."
-TRACK_CONTROLLER_FILE=$(resolve_track_controller) || error "TrackController não encontrado."
 log "Entrada do servidor detectada em $SERVER_ENTRY"
-log "TrackController detectado em $TRACK_CONTROLLER_FILE"
 
 # Fix permissions for the project directory so the user can run it
 log "Ajustando permissões do diretório para $USER_NAME"
