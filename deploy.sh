@@ -99,6 +99,12 @@ resolve_track_controller() {
             return 0
         fi
     done
+    local found
+    found=$(find "$PROJECT_DIR" -maxdepth 3 -type f \( -name "TrackController.ts" -o -name "TrackController.js" \) | head -n 1 || true)
+    if [ -n "$found" ]; then
+        echo "$found"
+        return 0
+    fi
     return 1
 }
 
