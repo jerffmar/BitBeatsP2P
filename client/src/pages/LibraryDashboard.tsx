@@ -12,9 +12,17 @@ type Props = {
 const LibraryDashboard: React.FC<Props> = ({ user, tracks, library, usageMB, onImport }) => {
   const seededCount = Object.values(library).filter((entry) => entry.status === 'SEEDING').length;
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    onImport(file, { title: file.name, artist: user.username });
+    try {
+      const file = event.target.files?.[0];
+      if (!file) {
+        console.warn('No file selected for import');
+        return;
+      }
+      console.log('File selected for import:', file.name);
+      onImport(file, { title: file.name, artist: user.username });
+    } catch (error) {
+      console.error('Error handling file import:', error);
+    }
   };
 
   return (

@@ -121,6 +121,12 @@ npm run build
 - **Missing modules (case-sensitive FS):** `deploy.sh` creates symlinks to reconcile Windows/macOS vs Linux casing.
 - **PM2 env vars:** HOST/PORT injected via `env` when starting the process—verify with `pm2 show bitbeats`.
 
+## Pending Mock Implementations
+
+- `analyzeAudio(file)` — `client/src/services/audioEngine.ts`: currently returns placeholder `{ buffer: null, duration: 0, fingerprint: null }`; needs real decoding plus fingerprint extraction.
+- `normalizeAndTranscode(buffer)` — `client/src/services/audioEngine.ts`: stub that should normalize levels and transcode into the final torrent-ready format.
+- `signUpload(file, fingerprint)` — `client/src/services/p2pNetwork.ts`: mocked signing flow; must be replaced with the real cryptographic signing tied to the user’s identity key.
+
 ## Roadmap / TODO
 
 - Implement MusicBrainz metadata matching, playback history tracking, recommendations, and PIX donation QR.

@@ -22,13 +22,14 @@ import {
   Volume2,
   Wifi,
   Zap,
+  Layers,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AuthScreen } from './AuthScreen';
-import { ArtistPage } from './pages/ArtistPage';
-import { AlbumPage } from './pages/AlbumPage';
-import { LibraryDashboard } from './pages/LibraryDashboard';
+import ArtistPage from './pages/ArtistPage';
+import AlbumPage from './pages/AlbumPage';
+import LibraryDashboard from './pages/LibraryDashboard';
 import DiscoveryPage from './pages/DiscoveryPage';
 import { LibraryArtists } from './pages/LibraryArtists';
 import { LibraryAlbums } from './pages/LibraryAlbums';
@@ -91,7 +92,7 @@ const Button: React.FC<
   );
 };
 
-const NavLinkButton: React.FC<{ path: string; icon: React.ComponentType<{ size?: number }>; label: string }> = ({
+const NavLinkButton: React.FC<{ path: string; icon: React.ComponentType<{ size?: number | string }>; label: string }> = ({
   path,
   icon: Icon,
   label,
@@ -113,7 +114,12 @@ const NavLinkButton: React.FC<{ path: string; icon: React.ComponentType<{ size?:
   );
 };
 
-const FilterChip: React.FC<{ active: boolean; icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void }> = ({
+const FilterChip: React.FC<{
+  active: boolean;
+  icon: React.ComponentType<{ size?: number | string }>;
+  label: string;
+  onClick: () => void;
+}> = ({
   active,
   icon: Icon,
   label,
@@ -163,26 +169,16 @@ const App: React.FC = () => {
   const [searchFilter, setSearchFilter] = useState<'ALL' | 'SONG' | 'ALBUM' | 'ARTIST'>('ALL');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchBundle>({ available: [], catalog: { songs: [], albums: [], artists: [] } });
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [newPostContent, setNewPostContent] = useState('');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
   useEffect(() => {
-    getSession().then((session) => {
+    getSession().then((session: User | null) => {
       if (session) {
         setUser(session);
       }
     });
-  }, []);
-
-  useEffect(() => {
-    const handlePrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferredPrompt(event);
-    };
-    window.addEventListener('beforeinstallprompt', handlePrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handlePrompt);
   }, []);
 
   useEffect(() => {
@@ -193,12 +189,12 @@ const App: React.FC = () => {
 
     const tearDowns: Array<() => void> = [];
     tearDowns.push(
-      subscribeToTracks((track) => {
+      subscribeToTracks((track: Track) => {
         setTracks((prev) => (prev.some((t) => t.id === track.id) ? prev : [track, ...prev]));
       }),
     );
     tearDowns.push(
-      subscribeToPosts((post) => {
+      subscribeToPosts((post: SocialPost) => {
         setSocialPosts((prev) => {
           if (prev.some((p) => p.id === post.id)) return prev;
           return [post, ...prev].slice(0, 40);
@@ -206,7 +202,7 @@ const App: React.FC = () => {
       }),
     );
     tearDowns.push(
-      subscribeToBounties((bounty) => {
+      subscribeToBounties((bounty: Bounty) => {
         setBounties((prev) => {
           if (prev.some((b) => b.id === bounty.id)) return prev;
           return [bounty, ...prev];
@@ -214,7 +210,7 @@ const App: React.FC = () => {
       }),
     );
     tearDowns.push(
-      subscribeToParties((party) => {
+      subscribeToParties((party: ListenParty) => {
         setActiveParties((prev) => {
           if (prev.some((p) => p.id === party.id)) return prev;
           return [party, ...prev];
@@ -222,7 +218,7 @@ const App: React.FC = () => {
       }),
     );
     tearDowns.push(
-      subscribeToCredits(user.id, (credits) => {
+      subscribeToCredits(user.id, (credits: number) => {
         setStats((prev) => ({ ...prev, credits }));
       }),
     );
@@ -256,7 +252,7 @@ const App: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    getStoredBytes().then((bytes) => setUsageMB(bytes / (1024 * 1024)));
+    getStoredBytes().then((bytes: number) => setUsageMB(bytes / (1024 * 1024)));
   }, [library]);
 
   useEffect(() => {
@@ -268,12 +264,6 @@ const App: React.FC = () => {
       setSearchFilter(type);
     }
   }, [location.search]);
-
-  const handleInstallClick = () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    deferredPrompt.userChoice.finally(() => setDeferredPrompt(null));
-  };
 
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -322,21 +312,37 @@ const App: React.FC = () => {
 
   const handleLocalImport = useCallback(
     async (file: File, metadata: { title: string; artist: string; album?: string }) => {
-      const analysis = await analyzeAudio(file);
-      const transposed = await normalizeAndTranscode(analysis.buffer);
-      const signed = await signUpload(file, analysis.fingerprint);
-      const magnet = await seedFile(new File([transposed], `${metadata.artist}-${metadata.title}.wav`, { type: 'audio/wav' }), metadata.title);
-      await publishTrackMetadata({
-        title: metadata.title,
-        artist: metadata.artist,
-        album: metadata.album ?? 'Unreleased',
-        duration: analysis.duration,
-        audioUrl: magnet,
-        coverUrl: currentTrack?.coverUrl ?? 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=600&q=60',
-        license: 'CC-BY',
-        tags: ['vault', 'import'],
-        artistSignature: signed,
-      });
+      try {
+        console.log('Starting local import for file:', file.name);
+        const analysis = await analyzeAudio(file);
+        if (!analysis?.buffer || !analysis.fingerprint || !analysis.duration) {
+          console.warn('Audio analysis returned mock data, aborting import.');
+          alert('Audio analysis failed. Please verify the analyzer implementation.');
+          return;
+        }
+        console.log('Audio analysis complete:', analysis);
+        const transposed = await normalizeAndTranscode(analysis.buffer);
+        console.log('Transcoding complete');
+        const signed = await signUpload(file, analysis.fingerprint);
+        console.log('Signing complete');
+        const magnet = await seedFile(new File([transposed], `${metadata.artist}-${metadata.title}.wav`, { type: 'audio/wav' }), metadata.title);
+        console.log('Seeding complete, magnet:', magnet);
+        await publishTrackMetadata({
+          title: metadata.title,
+          artist: metadata.artist,
+          album: metadata.album ?? 'Unreleased',
+          duration: analysis.duration,
+          audioUrl: magnet,
+          coverUrl: currentTrack?.coverUrl ?? 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=600&q=60',
+          license: 'CC-BY',
+          tags: ['vault', 'import'],
+          artistSignature: signed,
+        });
+        console.log('Track metadata published successfully');
+      } catch (error) {
+        console.error('Error during local import:', error);
+        alert(`Import failed: ${error.message || 'Unknown error'}`);
+      }
     },
     [currentTrack],
   );
@@ -482,23 +488,6 @@ const App: React.FC = () => {
           {navLinks.map((link) => (
             <NavLinkButton key={link.path} {...link} />
           ))}
-          {deferredPrompt && (
-            <button onClick={handleInstallClick} className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left">
-              <p className="text-sm font-semibold text-white flex items-center gap-2">
-                <Download size={14} /> Install PWA
-              </p>
-              <p className="text-xs text-gray-500">Enable offline vault + notifications.</p>
-            </button>
-          )}
-          <div className="mt-auto rounded-2xl bg-gradient-to-br from-purple-900/40 to-blue-900/30 border border-white/10 p-4">
-            <p className="text-xs text-gray-400 mb-1">Mesh Status</p>
-            <p className="text-white font-semibold text-lg">Stable</p>
-            <div className="flex gap-1 mt-3">
-              {[0, 1, 2].map((i) => (
-                <span key={i} className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-              ))}
-            </div>
-          </div>
         </aside>
 
         <main className="flex-1 overflow-y-auto pb-32">
@@ -510,12 +499,6 @@ const App: React.FC = () => {
             <Route
               path="/library"
               element={<LibraryDashboard user={user} library={library} tracks={tracks} usageMB={usageMB} onImport={handleLocalImport} />}
-            />
-            <Route path="/library/artists" element={<LibraryArtists tracks={tracks} />} />
-            <Route path="/library/albums" element={<LibraryAlbums tracks={tracks} />} />
-            <Route
-              path="/library/tracks"
-              element={<LibraryTracks tracks={tracks} currentTrackId={currentTrack?.id ?? null} onPlay={playTrack} />}
             />
             <Route
               path="/artist/:id"

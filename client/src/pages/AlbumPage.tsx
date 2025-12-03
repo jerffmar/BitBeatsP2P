@@ -5,12 +5,12 @@ import { Track } from '../types';
 type Props = {
   swarmTracks: Track[];
   onPlay: (track: Track) => void;
-  currentTrackId: number | null;
+  currentTrackId: string | null;
 };
 
 const AlbumPage: React.FC<Props> = ({ swarmTracks, onPlay, currentTrackId }) => {
-  const { id } = useParams();
-  const tracks = swarmTracks.filter((track) => track.albumId === id);
+  const { id } = useParams<{ id: string }>();
+  const tracks = swarmTracks.filter((track) => (track as any).albumId === id);
   const albumName = tracks[0]?.album || 'Unknown album';
 
   return (

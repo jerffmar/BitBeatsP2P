@@ -14,7 +14,7 @@ export class SeedService {
 
     private constructor() {
         this.client = new WebTorrent();
-        this.client.on('error', (err) => {
+        this.client.on('error', (err: Error) => {
             console.error('WebTorrent Error:', err.message);
         });
         console.log('SeedService inicializado.');
@@ -41,10 +41,10 @@ export class SeedService {
                 name: track.title,
                 // CRITICAL: Adiciona o WebSeed URL ao metadado do torrent
                 urlList: [webSeedUrl] 
-            }, (torrent) => {
+            }, (torrent: WebTorrent.Torrent) => {
                 this.torrents.set(track.id, torrent);
 
-                torrent.on('error', (err) => {
+                torrent.on('error', (err: Error) => {
                     console.error(`Torrent Error for track ${track.id}:`, err.message);
                     reject(err);
                 });

@@ -4,8 +4,8 @@
   "description": "BitBeats: A decentralized, hybrid P2P music streaming PWA.",
   "main": "src/server.ts",
   "scripts": {
-    "start": "ts-node src/server.ts",
-    "dev": "ts-node-dev --respawn src/server.ts",
+    "start": "tsx server.ts",
+    "dev": "ts-node-dev --respawn server.ts",
     "postinstall": "npm run client:install && npx prisma generate",
     "client:install": "node scripts/client-install.cjs",
     "client:build": "node scripts/client-build.cjs",
