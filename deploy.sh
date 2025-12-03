@@ -245,6 +245,12 @@ log "6. Pular Certbot (Usando Self-Signed para IP)"
 # --- 7. Configuração do PM2 ---
 log "7. Configurando PM2 para manter o servidor Node.js ativo"
 
+# Clearing old PM2 logs
+log "Limpando logs antigos do PM2"
+pm2 flush
+if [ "$USER_NAME" != "root" ]; then
+    sudo -u $USER_NAME pm2 flush
+fi  
 # Stop existing processes (try both root and user)
 pm2 stop bitbeats 2>/dev/null
 pm2 delete bitbeats 2>/dev/null
