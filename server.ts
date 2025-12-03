@@ -3,8 +3,8 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
-import { TrackController } from './controllers/TrackController';
-import prisma from './db';
+import { TrackController } from './services/TrackController';
+import prisma from './services/db';
 import { SeedService } from './services/SeedService';
 
 const app = express();
@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 // Inicialização dos serviços
 const seedService = SeedService.getInstance();
+const trackController = new TrackController();
 
 // Middleware para log de requisições
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -20,7 +21,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // 1. Rotas da API
-app.use('/api', new TrackController().router);
+app.get('/healthz', async (_req, res) => {
+    try {
+        await prisma.$queryRaw`SELECT 1`;
+        res.status(200).json({ status: 'ok' });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: (error as Error).message });
+    }
+});
+
+app.use('/api', trackController.router);
 
 // 2. Servir arquivos estáticos do React Frontend
 const clientDistPath = path.join(process.cwd(), 'client', 'dist');

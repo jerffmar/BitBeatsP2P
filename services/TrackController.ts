@@ -4,9 +4,9 @@ import { Request, Response, NextFunction, Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { DiskManager } from '../services/DiskManager';
-import { SeedService } from '../services/SeedService';
-import prisma from '../db';
+import { DiskManager } from './DiskManager';
+import { SeedService } from './SeedService';
+import prisma from './db';
 import mime from 'mime-types';
 
 // Configuração do Multer para upload temporário
