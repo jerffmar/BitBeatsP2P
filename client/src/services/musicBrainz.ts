@@ -1,4 +1,4 @@
-import { GlobalCatalogEntry } from '../types';
+import { GlobalCatalogEntry, ReleaseSummary } from '../types';
 
 const MUSICBRAINZ_BASE = 'https://musicbrainz.org/ws/2';
 const COVER_PLACEHOLDER =
@@ -184,5 +184,49 @@ export const getReleaseById = async (mbid: string) => {
   } catch (err) {
     console.warn('getReleaseById failed', err);
     return null;
+  }
+};
+
+/**
+ * Get recent releases for a given artist name.
+ * Tries server catalog (DB cached) first, falls back to MusicBrainz proxy.
+ */
+export const getReleasesByArtistName = async (artistName: string, limit = 4): Promise<ReleaseSummary[]> => {
+  if (!artistName || !artistName.trim()) return [];
+  // 1) server-side catalog search (DB first)
+  try {
+    const catalog = await requestCatalogSearch<{ albums: any[] }>({ q: artistName, type: 'ALBUM', offset: 0, limit });
+    if (catalog?.albums && catalog.albums.length) {
+      return catalog.albums.slice(0, limit).map((a: any) => ({
+        mbid: a.mbid ?? a.id,
+        title: a.title,
+        date: a.date ?? a.releaseDate,
+        type: a.type ?? undefined,
+        coverUrl: a.coverUrl ?? a.cover ?? COVER_PLACEHOLDER,
+      }));
+    }
+  } catch (err) {
+    console.warn('Catalog search (artist releases) failed, falling back to MusicBrainz:', err);
+  }
+
+  // 2) fallback: MusicBrainz release search by artist name
+  try {
+    const data = await requestMusicBrainz<ReleaseResponse>('release', {
+      query: `artist:${artistName}`,
+      offset: 0,
+      limit,
+      inc: 'artist-credits',
+    });
+    if (!data?.releases) return [];
+    return data.releases.slice(0, limit).map((r) => ({
+      mbid: r.id,
+      title: r.title,
+      date: (r as any).date,
+      type: (r as any)['primary-type'] || undefined,
+      coverUrl: buildCoverUrl(r) ?? COVER_PLACEHOLDER,
+    }));
+  } catch (err) {
+    console.warn('MusicBrainz release lookup failed:', err);
+    return [];
   }
 };
