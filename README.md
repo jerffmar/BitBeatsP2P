@@ -124,12 +124,12 @@ npm run build
 ## Pending Mock Implementations (current status)
 
 - `analyzeAudio(file)` — client/src/services/audioEngine.ts
-  - Status: STILL A MOCK. Current code returns placeholder values; import/flow integrated but real decoding + fingerprint extraction not implemented.
-  - Next steps: implement WebAudio/AudioContext decoding or use ffmpeg-wasm to decode and extract fingerprint (Chromaprint/AcoustID).
+  - Status: IMPLEMENTED. The client now decodes audio via the Web Audio API (AudioContext), mixes to mono, computes a compact perceptual fingerprint (windowed RMS + small DFT magnitudes), hashes it (SHA-256) and returns a WAV ArrayBuffer plus duration and fingerprint.
+  - Notes: This is a JS-based fingerprint that is robust for local deduplication and initial identification. For acoustical fingerprint compatibility (e.g., Chromaprint/AcoustID) integrate ffmpeg-wasm + Chromaprint or run server-side fingerprinting.
 
 - `normalizeAndTranscode(buffer)` — client/src/services/audioEngine.ts
-  - Status: STILL A MOCK. Transcoding/normalization flow is wired into import pipeline but returns the original buffer or a simple passthrough.
-  - Next steps: integrate ffmpeg-wasm or offload to server-side transcoding; ensure consistent container/codec for torrent seeding.
+  - Status: IMPLEMENTED. Uses Web Audio to decode, resample to a target sample rate, normalize peaks, and emit a WAV ArrayBuffer suitable for seeding/playback.
+  - Next steps: Optionally move heavy transcoding to a server-side ffmpeg worker for large files or battery-constrained clients.
 
 - `signUpload(file, fingerprint)` — client/src/services/p2pNetwork.ts + client/src/services/auth.ts
   - Status: PARTIALLY IMPLEMENTED on client. A WebCrypto-based ECDSA keypair is generated/persisted and signUpload produces a signed payload. Server-side verification / identity management is not implemented.
