@@ -285,5 +285,3 @@ export const getReleasesByArtistName = async (artistName: string, limit = 8) => 
     }))
     .slice(0, limit);
 };
-
-export { searchGlobalCatalog };
