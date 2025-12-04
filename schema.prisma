@@ -67,3 +67,38 @@ model Album {
   title String  @unique
   // Relacionamento com Artist e Track pode ser adicionado se necessário
 }
+
+// New: MusicBrainz cache models
+model MbArtist {
+  id        Int      @id @default(autoincrement())
+  mbid      String   @unique
+  name      String
+  sortName  String?
+  country   String?
+  bio       String?    // optional short bio (from Wikipedia summary if available)
+  // full MusicBrainz response stored as plain text (serialize JSON when saving)
+  data      String?
+  fetchedAt DateTime   @default(now())
+}
+
+model MbRelease {
+  id        Int      @id @default(autoincrement())
+  mbid      String   @unique
+  title     String
+  date      String?
+  status    String?
+  coverUrl  String?
+  // full MusicBrainz response stored as plain text (serialize JSON when saving)
+  data      String?
+  fetchedAt DateTime   @default(now())
+}
+
+model MbRecording {
+  id           Int      @id @default(autoincrement())
+  mbid         String   @unique
+  title        String
+  artistCredit String?
+  // full MusicBrainz response stored as plain text (serialize JSON when saving)
+  data         String?
+  fetchedAt    DateTime   @default(now())
+}

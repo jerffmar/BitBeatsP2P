@@ -684,7 +684,7 @@ const App: React.FC = () => {
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search the MusicBrainz catalog or your swarm inventory…"
+            placeholder="Search for Artists, Albuns and Tracks..."
             className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-cyan-400"
           />
         </form>

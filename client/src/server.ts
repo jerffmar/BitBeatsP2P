@@ -7,8 +7,9 @@ import { Prisma } from '@prisma/client';
 import type { User as PrismaUser } from '@prisma/client';
 import path from 'path';
 import { TrackController } from './services/TrackController';
-import prisma from './services/prisma.server';
 import { SeedService } from './services/SeedService';
+import { CatalogController } from './services/CatalogController';
+import prisma from './services/prisma.server';
 import { spawn } from 'child_process';
 
 const app = express();
@@ -96,7 +97,9 @@ app.get('/healthz', async (_req, res) => {
     }
 });
 
+// register API routers
 app.use('/api', trackController.router);
+app.use('/api/catalog', CatalogController.router);
 
 app.post('/api/auth/register', async (req, res) => {
     const executeRegistration = async () => {

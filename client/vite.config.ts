@@ -42,7 +42,8 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      'bittorrent-dht': path.resolve(__dirname, 'src/shims/bittorrent-dht.ts'),
+      // Use browser-friendly DHT implementation for client bundles
+      'bittorrent-dht': path.resolve(__dirname, 'src/shims/browser-dht.ts'),
     },
   },
   build: {

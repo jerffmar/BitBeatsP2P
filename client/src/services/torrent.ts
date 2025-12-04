@@ -10,9 +10,26 @@ export const initTorrentClient = async () => {
     console.warn('initTorrentClient: running outside browser, skipping initialization.');
     return;
   }
-  client = new WebTorrent();
-  client.on('error', (err) => console.error('[torrent] client error', err));
-  console.log('Torrent client initialized');
+
+  try {
+    // Disable client-side DHT and LSD in browser; server will run hybrid mode + DHT.
+    // This prevents webtorrent from instantiating bittorrent-dht and avoids runtime shim issues.
+    client = new WebTorrent({
+      // @ts-ignore - some typings may not include these browser-friendly options
+      dht: false,
+      lsd: false,
+      // keep trackers/webSeeds enabled (server provides webseed fallback)
+      tracker: true,
+      webSeeds: true,
+    } as any);
+
+    client.on('error', (err) => console.error('[torrent] client error', err));
+    console.log('Torrent client initialized (DHT disabled, LSD disabled).');
+  } catch (err) {
+    console.warn('initTorrentClient: failed to initialize WebTorrent client, disabling torrent features.', err);
+    client = null;
+    throw err;
+  }
 };
 
 export const seedFile = async (file: File, name?: string): Promise<string> => {
@@ -36,7 +53,8 @@ export const addTorrent = async (magnetURI: string): Promise<{ url: string; dest
   if (!client) throw new Error('Torrent client not available');
   return new Promise((resolve, reject) => {
     try {
-      const torrent = client!.add(magnetURI, { announce: [] }, () => {
+      // In browser we avoid DHT lookups; prefer trackers/webseeds. Provide no extra announce to avoid DHT fallback.
+      const torrent = client!.add(magnetURI, { announce: [], store: 'memory' } as any, () => {
         const file = torrent.files && torrent.files[0];
         if (!file) return reject(new Error('Torrent contains no files'));
         // Try WebTorrent's getBlobURL helper (browser-only)
@@ -46,12 +64,8 @@ export const addTorrent = async (magnetURI: string): Promise<{ url: string; dest
             resolve({
               url,
               destroy: () => {
-                try {
-                  URL.revokeObjectURL(url);
-                } catch { /* ignore */ }
-                try {
-                  client!.remove(torrent.infoHash);
-                } catch { /* ignore */ }
+                try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+                try { client!.remove(torrent.infoHash); } catch { /* ignore */ }
               },
             });
           });
@@ -62,12 +76,8 @@ export const addTorrent = async (magnetURI: string): Promise<{ url: string; dest
             resolve({
               url,
               destroy: () => {
-                try {
-                  URL.revokeObjectURL(url);
-                } catch { /* ignore */ }
-                try {
-                  client!.remove(torrent.infoHash);
-                } catch { /* ignore */ }
+                try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+                try { client!.remove(torrent.infoHash); } catch { /* ignore */ }
               },
             });
           });
@@ -83,7 +93,8 @@ export const addTorrent = async (magnetURI: string): Promise<{ url: string; dest
 };
 
 export const discoverLocalPeers = async (): Promise<string[]> => {
-  await initTorrentClient();
+  // No DHT-based discovery in the browser — enumerate active torrent wires only.
+  await initTorrentClient().catch(() => null);
   if (!client) return [];
   const peers = new Set<string>();
   client.torrents.forEach((t) => {

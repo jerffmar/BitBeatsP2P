@@ -66,7 +66,24 @@ const requestMusicBrainz = async <T>(endpoint: string, params: Record<string, st
   }
 };
 
+const requestCatalogSearch = async <T>(params: Record<string, string | number>) => {
+  try {
+    const url = new URL('/api/catalog/search', window.location.origin);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+    const resp = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+    if (!resp.ok) throw new Error(`Catalog search failed ${resp.status}`);
+    return (await resp.json()) as T;
+  } catch (err) {
+    console.warn('Catalog search failed, falling back to MusicBrainz proxy', err);
+    return null;
+  }
+};
+
 const fetchRecordings = async (query: string, offset: number, limit: number) => {
+  // Try server DB first
+  const catalog = await requestCatalogSearch<{ songs: any[] }>({ q: query, type: 'SONG', offset, limit });
+  if (catalog?.songs && catalog.songs.length) return catalog.songs;
+  // fallback: use existing client-side MB proxy if server returned nothing
   const data = await requestMusicBrainz<RecordingResponse>('recording', {
     query,
     offset,
@@ -75,7 +92,6 @@ const fetchRecordings = async (query: string, offset: number, limit: number) => 
   });
   if (!data?.recordings) return [];
   return data.recordings.map((recording) => ({
-    id: recording.id, // <-- add required id
     mbid: recording.id,
     title: recording.title,
     artist: normalizeArtistCredit(recording['artist-credit']),
@@ -84,6 +100,8 @@ const fetchRecordings = async (query: string, offset: number, limit: number) => 
 };
 
 const fetchReleases = async (query: string, offset: number, limit: number) => {
+  const catalog = await requestCatalogSearch<{ albums: any[] }>({ q: query, type: 'ALBUM', offset, limit });
+  if (catalog?.albums && catalog.albums.length) return catalog.albums;
   const data = await requestMusicBrainz<ReleaseResponse>('release', {
     query,
     offset,
@@ -92,7 +110,6 @@ const fetchReleases = async (query: string, offset: number, limit: number) => {
   });
   if (!data?.releases) return [];
   return data.releases.map((release) => ({
-    id: release.id, // <-- add required id
     mbid: release.id,
     title: release.title,
     artist: normalizeArtistCredit(release['artist-credit']),
@@ -101,6 +118,8 @@ const fetchReleases = async (query: string, offset: number, limit: number) => {
 };
 
 const fetchArtists = async (query: string, offset: number, limit: number) => {
+  const catalog = await requestCatalogSearch<{ artists: any[] }>({ q: query, type: 'ARTIST', offset, limit });
+  if (catalog?.artists && catalog.artists.length) return catalog.artists;
   const data = await requestMusicBrainz<ArtistResponse>('artist', {
     query,
     offset,
@@ -108,7 +127,6 @@ const fetchArtists = async (query: string, offset: number, limit: number) => {
   });
   if (!data?.artists) return [];
   return data.artists.map((artist) => ({
-    id: artist.id, // <-- add required id
     mbid: artist.id,
     title: artist.name,
     artist: artist.name,
@@ -144,144 +162,27 @@ export const searchGlobalCatalog = async (
  * Fetch artist by MBID with relations (including urls & releases).
  * Attempts to build a short bio using a Wikipedia relation when available.
  */
-export const getArtistById = async (mbid: string): Promise<import('../types').ArtistDetail | null> => {
-  if (!mbid) return null;
-  const data = await requestMusicBrainz<any>(`artist/${mbid}`, { inc: 'url-rels+release-groups+releases' });
-  if (!data || !data.id) return null;
-
-  const name: string = data.name;
-  let bio: string | undefined;
-
-  // Try to find a Wikipedia url relation
-  const wikiRel = (data.relations || []).find((r: any) =>
-    r.type?.toLowerCase().includes('wikipedia') ||
-    (r.url && r.url.resource && String(r.url.resource).includes('wikipedia.org')),
-  );
-
-  if (wikiRel && wikiRel.url && wikiRel.url.resource) {
-    try {
-      // extract page title from URL and ask Wikipedia REST summary
-      const url = new URL(wikiRel.url.resource);
-      const title = decodeURIComponent(url.pathname.replace(/^\/wiki\//, ''));
-      const wpResp = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
-      if (wpResp.ok) {
-        const wpJson = await wpResp.json();
-        if (typeof wpJson.extract === 'string') bio = wpJson.extract;
-      }
-    } catch (e) {
-      // ignore wiki fetch errors
-    }
+export const getArtistById = async (mbid: string) => {
+  try {
+    const resp = await fetch(`/api/catalog/artist/${mbid}`);
+    if (!resp.ok) throw new Error('artist fetch failed');
+    return await resp.json();
+  } catch (err) {
+    console.warn('getArtistById failed', err);
+    return null;
   }
-
-  // Build simple list of releases (release-groups/releases returned by inc)
-  const releases: import('../types').ReleaseSummary[] = [];
-  if (Array.isArray(data['releases'])) {
-    for (const r of data['releases']) {
-      releases.push({
-        mbid: r.id,
-        title: r.title,
-        date: r.date,
-        type: r['release-group']?.primary_type || undefined,
-        coverUrl: buildCoverUrl(r) ?? COVER_PLACEHOLDER,
-      });
-    }
-  }
-  // Also try release-groups if available (avoids duplicates)
-  if (Array.isArray(data['release-groups'])) {
-    for (const rg of data['release-groups']) {
-      releases.push({
-        mbid: rg.id,
-        title: rg.title,
-        date: rg['first-release-date'],
-        type: rg['primary-type'],
-        coverUrl: rg.id ? `https://coverartarchive.org/release-group/${rg.id}/front` : COVER_PLACEHOLDER,
-      });
-    }
-  }
-
-  // dedupe by mbid and prefer ones with covers/dates
-  const seen = new Map<string, import('../types').ReleaseSummary>();
-  for (const r of releases) {
-    if (!r.mbid) continue;
-    const prev = seen.get(r.mbid);
-    if (!prev) seen.set(r.mbid, r);
-    else {
-      // merge fields preferring cover/date
-      seen.set(r.mbid, { ...prev, ...r, coverUrl: prev.coverUrl || r.coverUrl, date: prev.date || r.date });
-    }
-  }
-
-  const merged = Array.from(seen.values()).sort((a, b) => {
-    if (!a.date && !b.date) return 0;
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    return b.date.localeCompare(a.date);
-  });
-
-  return {
-    mbid: data.id,
-    name,
-    sortName: data['sort-name'],
-    bio,
-    country: data.country,
-    lifeSpan: data['life-span'],
-    releases: merged,
-  };
 };
 
 /**
  * Fetch a release (album) and its recordings (tracklist)
  */
-export const getReleaseById = async (mbid: string): Promise<import('../types').ReleaseDetail | null> => {
-  if (!mbid) return null;
-  const data = await requestMusicBrainz<any>(`release/${mbid}`, { inc: 'recordings+artist-credits' });
-  if (!data || !data.id) return null;
-
-  // collect tracks across media
-  const tracks: Array<{ position?: string; title: string; length?: number }> = [];
-  if (Array.isArray(data.media)) {
-    for (const media of data.media) {
-      if (Array.isArray(media.tracks)) {
-        for (const t of media.tracks) {
-          tracks.push({
-            position: t.position != null ? String(t.position) : t.number,
-            title: t.title,
-            length: typeof t.length === 'number' ? t.length : (t.length ? Number(t.length) : undefined),
-          });
-        }
-      }
-    }
+export const getReleaseById = async (mbid: string) => {
+  try {
+    const resp = await fetch(`/api/catalog/release/${mbid}`);
+    if (!resp.ok) throw new Error('release fetch failed');
+    return await resp.json();
+  } catch (err) {
+    console.warn('getReleaseById failed', err);
+    return null;
   }
-
-  const cover = data.id ? `https://coverartarchive.org/release/${data.id}/front` : undefined;
-
-  return {
-    mbid: data.id,
-    title: data.title,
-    date: data.date,
-    status: data.status,
-    disambiguation: data.disambiguation,
-    coverUrl: cover ?? COVER_PLACEHOLDER,
-    artistCredit: Array.isArray(data['artist-credit']) ? data['artist-credit'].map((ac) => ac.name || ac.artist?.name).join(', ') : undefined,
-    tracks,
-  };
-};
-
-/**
- * Search recent releases by artist name (used to build mosaics when artist profile is poor)
- */
-export const getReleasesByArtistName = async (artistName: string, limit = 8) => {
-  if (!artistName) return [];
-  // Use release search query by artist name; results may include duplicates but it's ok for mosaic
-  const q = `artist:${artistName}`;
-  const data = await requestMusicBrainz<any>('release', { query: q, limit, inc: 'artist-credits' });
-  if (!data?.releases) return [];
-  return data.releases
-    .map((r: any) => ({
-      mbid: r.id,
-      title: r.title,
-      date: r.date,
-      coverUrl: buildCoverUrl(r) ?? COVER_PLACEHOLDER,
-    }))
-    .slice(0, limit);
 };

@@ -1,59 +1,89 @@
-/**
- * Minimal browser shim for `bittorrent-dht`.
- * Exposes a named `Client` export (used by torrent-discovery) and a default export.
- * All methods are no-op in the browser to avoid build/runtime failures.
- */
+// Minimal browser shim for bittorrent-dht to satisfy WebTorrent's runtime checks.
+// This does NOT implement a full DHT — it provides EventEmitter-like methods and noop lifecycle helpers.
 
-type Callback = (...args: any[]) => void;
+type Listener = (...args: any[]) => void;
 
-class BrowserDHT {
-  constructor(_opts?: any) {
-    if (typeof window !== 'undefined' && !(window as any).__BITTORRENT_DHT_SHIM_WARNED) {
-      // eslint-disable-next-line no-console
-      console.warn('[bittorrent-dht shim] running in browser — DHT disabled (no-op).');
-      (window as any).__BITTORRENT_DHT_SHIM_WARNED = true;
+class SimpleEmitter {
+  private events: Map<string, Listener[]> = new Map();
+
+  setMaxListeners(_n?: number) {
+    // noop — browsers don't need Node's listener limit
+    return this;
+  }
+
+  on(event: string, fn: Listener) {
+    const list = this.events.get(event) ?? [];
+    list.push(fn);
+    this.events.set(event, list);
+    return this;
+  }
+
+  once(event: string, fn: Listener) {
+    const wrapped: Listener = (...args: any[]) => {
+      this.removeListener(event, wrapped);
+      fn(...args);
+    };
+    return this.on(event, wrapped);
+  }
+
+  removeListener(event: string, fn?: Listener) {
+    if (!fn) {
+      this.events.delete(event);
+      return this;
     }
-  }
-
-  listen(..._args: any[]) {
-    // no-op
-  }
-
-  destroy(cb?: Callback) {
-    if (typeof cb === 'function') cb();
-    return Promise.resolve();
-  }
-
-  announce(..._args: any[]) {
-    // no-op
-  }
-
-  lookup(..._args: any[]) {
-    // no-op
-  }
-
-  on(_ev: string, _cb: Callback) {
-    // no-op
+    const list = this.events.get(event);
+    if (!list) return this;
+    const idx = list.indexOf(fn);
+    if (idx >= 0) list.splice(idx, 1);
+    if (list.length === 0) this.events.delete(event);
     return this;
   }
 
-  once(_ev: string, _cb: Callback) {
-    // no-op
+  emit(event: string, ...args: any[]) {
+    const list = (this.events.get(event) || []).slice();
+    for (const fn of list) {
+      try { fn(...args); } catch (e) { /* swallow errors from listeners */ }
+    }
     return this;
-  }
-
-  off(_ev: string, _cb?: Callback) {
-    // no-op
-    return this;
-  }
-
-  address() {
-    return { port: 0, family: 'IPv4', address: '0.0.0.0' };
   }
 }
 
-// Named export expected by `torrent-discovery`
-export class Client extends BrowserDHT {}
+/**
+ * Export default factory to match CommonJS/ES expectations.
+ * WebTorrent does `new DHT(opts)` so export a constructor-like function.
+ */
+export default function DHTShim(_opts?: any) {
+  // Return an object with the minimal API WebTorrent expects from a DHT instance.
+  const emitter = new SimpleEmitter();
 
-// Default export for other consumers
-export default BrowserDHT;
+  // Provide commonly accessed lifecycle methods as no-ops or proxies to emitter.
+  const api: any = {
+    setMaxListeners: emitter.setMaxListeners.bind(emitter),
+    on: emitter.on.bind(emitter),
+    once: emitter.once.bind(emitter),
+    removeListener: emitter.removeListener.bind(emitter),
+    removeAllListeners: (event?: string) => {
+      if (event) emitter.removeListener(event);
+      else { /* clear all */ (emitter as any).events = new Map(); }
+    },
+    destroy: (cb?: (err?: any) => void) => {
+      // no persistent resources, just invoke callback
+      try {
+        (emitter as any).events = new Map();
+        if (typeof cb === 'function') cb();
+      } catch (err) {
+        if (typeof cb === 'function') cb(err);
+      }
+    },
+    listen: (..._args: any[]) => {
+      // noop in browser shim
+    },
+    announce: (..._args: any[]) => {
+      // noop stub
+    },
+    // in case code checks for `ready` event, allow emit externally
+    emit: emitter.emit.bind(emitter),
+  };
+
+  return api;
+}
