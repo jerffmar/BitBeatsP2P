@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { apiClient } from './api';
 import { User } from '../types';
+import { signUpload as signWithNetwork } from './p2pNetwork';
 
 const SESSION_KEY = 'bitbeats:session';
 
@@ -56,6 +57,13 @@ export const getSession = async (): Promise<User | null> => {
   return { id: '1', username: 'Demo User', handle: '@demo' };
 };
 
-export const signUpload = async (_file: File, _fingerprint: string) => {
-  return { signature: 'mock-sig', timestamp: Date.now() };
+// replace mock signUpload with real signer delegation
+export const signUpload = async (file: File, fingerprint: string) => {
+  try {
+    const signature = await signWithNetwork(file, fingerprint);
+    return { signature, timestamp: Date.now() };
+  } catch (err) {
+    console.warn('signUpload fallback to mock signature', err);
+    return { signature: 'mock-sig', timestamp: Date.now() };
+  }
 };

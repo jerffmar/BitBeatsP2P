@@ -187,6 +187,7 @@ const App: React.FC = () => {
   const [newPostContent, setNewPostContent] = useState('');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [torrentAvailable, setTorrentAvailable] = useState(true);
 
   useEffect(() => {
     getSession().then((session: User | null) => {
@@ -243,10 +244,26 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     initDB();
-    initTorrentClient();
-    // Accept either a number (mock) or an array (future real peers)
+
+    // init torrent client safely
     (async () => {
       try {
+        // initTorrentClient might throw when webtorrent or dht shims misbehave in the browser
+        await (initTorrentClient as any)();
+        setTorrentAvailable(true);
+      } catch (err) {
+        console.warn('initTorrentClient failed, disabling torrent features:', err);
+        setTorrentAvailable(false);
+      }
+    })();
+
+    // Discover peers only if torrent client available
+    (async () => {
+      try {
+        if (!torrentAvailable) {
+          setActivePeers(0);
+          return;
+        }
         const peers = await discoverLocalPeers();
         if (Array.isArray(peers)) setActivePeers(peers.length);
         else if (typeof peers === 'number') setActivePeers(peers);
@@ -322,7 +339,7 @@ const App: React.FC = () => {
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
     };
-  }, [user, refreshSeededLibrary]);
+  }, [user, refreshSeededLibrary, torrentAvailable]);
 
   useEffect(() => {
     if (!user) return;
@@ -390,29 +407,54 @@ const App: React.FC = () => {
   };
 
   const handleLocalImport = useCallback(
-    async (file: File, metadata: { title: string; artist: string; album?: string }) => {
+    async (file: File, metadata: { title: string; artist: string; album?: string }, onProgress?: (p: number) => void) => {
       try {
         console.log('Starting local import for file:', file.name);
         const analysis = await analyzeAudio(file);
         if (!analysis?.buffer || !analysis.fingerprint || !analysis.duration) {
-          console.warn('Audio analysis returned mock data, aborting import.');
-          alert('Audio analysis failed. Please verify the analyzer implementation.');
-          return;
+          console.warn('Audio analysis returned mock data or failed.');
+          throw new Error('Audio analysis failed. Please verify the analyzer implementation.');
         }
         console.log('Audio analysis complete:', analysis);
         const transposed = await normalizeAndTranscode(analysis.buffer);
         console.log('Transcoding complete');
-        // Fix: extract signature string from signed object
-        const signed = await signUpload(file, analysis.fingerprint);
-        console.log('Signing complete');
-        const normalizedSizeMB = transposed.byteLength / (1024 * 1024);
-        const localTrackId = (crypto as Crypto)?.randomUUID?.() ?? `local-${Date.now()}`;
-        const magnet = await seedFile(new File([transposed], `${metadata.artist}-${metadata.title}.wav`, { type: 'audio/wav' }), metadata.title);
-        console.log('Seeding complete, magnet:', magnet);
 
-        // Create blob URL for playback
+        const signed = await signUpload(file, analysis.fingerprint).catch((e) => {
+          console.warn('signUpload failed, continuing with mock signature:', e);
+          return { signature: 'mock-sig' };
+        });
+
+        // Upload original file to server (reports progress via onProgress) - do not block seed on upload failure
+        try {
+          await api.upload(file, { title: metadata.title, artist: metadata.artist, album: metadata.album }, onProgress);
+          console.log('Server upload completed');
+        } catch (uploadErr) {
+          console.warn('Server upload failed — continuing local seeding/publishing', uploadErr);
+        }
+
+        // create blob URL now so we can always play the file even if seeding fails
         const blob = new Blob([transposed], { type: 'audio/wav' });
         const audioUrl = URL.createObjectURL(blob);
+
+        // attempt to seed only if torrent subsystem available
+        let magnet = '';
+        if (torrentAvailable) {
+          try {
+            magnet = await seedFile(new File([transposed], `${metadata.artist}-${metadata.title}.wav`, { type: 'audio/wav' }), metadata.title);
+            console.log('Seeding complete, magnet:', magnet);
+          } catch (seedErr) {
+            console.warn('Seeding failed, disabling torrent features:', seedErr);
+            setTorrentAvailable(false);
+            // fallback to blob URL when seeding not available
+            magnet = audioUrl;
+          }
+        } else {
+          // no torrent support in this environment — playback via blob URL
+          magnet = audioUrl;
+        }
+
+        const normalizedSizeMB = transposed.byteLength / (1024 * 1024);
+        const localTrackId = (crypto as Crypto)?.randomUUID?.() ?? `local-${Date.now()}`;
 
         const optimisticTrack: Track = {
           id: localTrackId,
@@ -420,7 +462,7 @@ const App: React.FC = () => {
           artist: metadata.artist,
           album: metadata.album ?? 'Unreleased',
           coverUrl: currentTrack?.coverUrl ?? 'https://images.unsplash.com/photo-1511376777868-611b54f68947?auto=format&fit=crop&w=600&q=60',
-          audioUrl: audioUrl,
+          audioUrl: magnet,
           duration: analysis.duration,
           sizeMB: normalizedSizeMB,
         };
@@ -432,8 +474,8 @@ const App: React.FC = () => {
             id: localTrackId,
             dateAdded: Date.now(),
             trackId: localTrackId,
-            status: 'SEEDING',
-            progress: 1,
+            status: torrentAvailable ? 'SEEDING' : 'REMOTE',
+            progress: torrentAvailable ? 1 : 0,
             addedAt: Date.now(),
             lastPlayed: 0,
           },
@@ -451,13 +493,51 @@ const App: React.FC = () => {
           tags: ['vault', 'import'],
           artistSignature: signed.signature,
         });
+
+        // IDENTIFICATION: try to auto-fill richer metadata via MusicBrainz search
+        try {
+          const q = `${metadata.artist} ${metadata.title}`.trim();
+          const result = await searchGlobalCatalog(q, 0, 'SONG');
+          const match = result?.songs?.[0];
+          if (match) {
+            // build new track object merging available identified fields
+            const identified: Partial<Track> = {
+              title: match.title || optimisticTrack.title,
+              artist: match.artist || optimisticTrack.artist,
+              coverUrl: match.coverUrl || optimisticTrack.coverUrl,
+              album: (match.release || optimisticTrack.album),
+              // some catalog entries may include year or releaseDate
+              // add a releaseYear field only if type Track supports it (we keep it as optional)
+              ...(match.year ? { releaseYear: match.year } : (match.releaseDate ? { releaseYear: new Date(match.releaseDate).getFullYear() } : {})),
+            };
+
+            // update optimistic track in state
+            setTracks((prev) =>
+              prev.map((t) => (t.id === localTrackId ? { ...t, ...identified } : t)),
+            );
+
+            // also update library entry metadata if you keep such fields there
+            setLibrary((prev) => ({
+              ...prev,
+              [localTrackId]: {
+                ...prev[localTrackId],
+                // keep status/progress unchanged; add optional human-friendly metadata if used elsewhere
+                // ...no-op here unless your LibraryEntry type contains those fields
+              },
+            }));
+          }
+        } catch (identifyErr) {
+          console.warn('Auto-identification failed:', identifyErr);
+        }
+
         console.log('Track metadata published successfully');
       } catch (error: any) {
         console.error('Error during local import:', error);
-        alert(`Import failed: ${error.message || 'Unknown error'}`);
+        // rethrow so the caller (UI) can show non-blocking inline messages
+        throw error;
       }
     },
-    [currentTrack],
+    [currentTrack, torrentAvailable],
   );
 
   const playTrack = useCallback(

@@ -95,12 +95,25 @@ export class TrackController {
             if (tempFilePath && fs.existsSync(tempFilePath)) {
                 await fs.promises.unlink(tempFilePath).catch(err => console.error('Erro ao limpar arquivo temporário:', err));
             }
+
+            // In dev expose error details to help debugging; keep generic in production
+            const isDev = process.env.NODE_ENV !== 'production';
             if (this.isSchemaMissingError(error)) {
                 const message = error instanceof Error && error.message
                     ? error.message
                     : 'Schema do banco ausente. Execute `npx prisma migrate deploy` antes de usar a API.';
                 return res.status(503).json({ error: message });
             }
+
+            // Provide more info when running locally to surface the real exception
+            if (isDev && error instanceof Error) {
+                return res.status(500).json({
+                    error: 'Erro interno do servidor durante o upload.',
+                    message: error.message,
+                    stack: error.stack,
+                });
+            }
+
             res.status(500).json({ error: 'Erro interno do servidor durante o upload.' });
         }
     };

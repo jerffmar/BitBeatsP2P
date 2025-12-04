@@ -9,16 +9,22 @@ export const apiClient = axios.create({
   },
 });
 
-const upload = async (file: File, _metadata: any) => {
+// modify upload to accept an optional progress callback
+export const upload = async (file: File, _metadata: any, onProgress?: (percent: number) => void) => {
   const formData = new FormData();
   formData.append('trackFile', file);
+  // attach minimal metadata if provided
+  if (_metadata?.title) formData.append('title', _metadata.title);
+  if (_metadata?.artist) formData.append('artist', _metadata.artist);
+  if (_metadata?.album) formData.append('album', _metadata.album);
 
   const response = await apiClient.post('/api/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    onUploadProgress: (progressEvent) => {
-      const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (progressEvent: import('axios').AxiosProgressEvent) => {
+      const total = progressEvent.total || 1;
+      const percentCompleted = Math.round((progressEvent.loaded * 100) / total);
+      if (typeof onProgress === 'function') onProgress(percentCompleted);
+      // graceful log fallback
       console.log(`Upload progress: ${percentCompleted}%`);
     },
   });

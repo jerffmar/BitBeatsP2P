@@ -42,16 +42,33 @@ const ensureIdentityKeyPair = async (): Promise<CryptoKeyPair> => {
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)));
 
+// Lightweight local messaging via BroadcastChannel for demo/same-origin peers
+const BC_CHANNEL = 'bitbeats:local-chat';
+let bc: BroadcastChannel | null = null;
+const ensureBC = () => {
+  if (typeof BroadcastChannel === 'undefined') return null;
+  if (!bc) bc = new BroadcastChannel(BC_CHANNEL);
+  return bc;
+};
+
 export const connectToPeer = async (peerId: string) => {
-  // Placeholder — connection orchestration (signaling) not implemented here.
-  console.log('Connecting to peer:', peerId);
+  // For demo: announce our interest to the BroadcastChannel
+  const channel = ensureBC();
+  if (channel) {
+    channel.postMessage({ type: 'connect', peerId, from: (await ensureIdentityKeyPair()).publicKey ? 'local' : 'unknown' });
+  }
+  console.log('Connecting to peer (demo):', peerId);
   return { success: true };
 };
 
 export const sendMessage = async (peerId: string, message: string) => {
-  // Placeholder — actual datachannel messaging requires signaling and channel management.
-  console.log('Sending message to peer:', peerId, message);
-  return { success: true };
+  const channel = ensureBC();
+  if (channel) {
+    channel.postMessage({ type: 'message', to: peerId, message, timestamp: Date.now() });
+    return { success: true };
+  }
+  console.warn('BroadcastChannel not available; sendMessage is a no-op in this environment.');
+  return { success: false };
 };
 
 export const discoverLocalPeers = async (): Promise<string[]> => {

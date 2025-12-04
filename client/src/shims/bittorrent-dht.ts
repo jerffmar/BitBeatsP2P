@@ -1,17 +1,13 @@
 /**
  * Minimal browser shim for `bittorrent-dht`.
- * WebTorrent imports this module; in browser builds we don't run a native DHT node.
- * The shim provides the minimal API shape (no-op) so bundlers and runtime code don't crash.
- *
- * This intentionally logs a warning when used in-browser; server-side (Node) code
- * should use the real `bittorrent-dht` package.
+ * Exposes a named `Client` export (used by torrent-discovery) and a default export.
+ * All methods are no-op in the browser to avoid build/runtime failures.
  */
 
 type Callback = (...args: any[]) => void;
 
-export default class BrowserDHT {
+class BrowserDHT {
   constructor(_opts?: any) {
-    // Warn once
     if (typeof window !== 'undefined' && !(window as any).__BITTORRENT_DHT_SHIM_WARNED) {
       // eslint-disable-next-line no-console
       console.warn('[bittorrent-dht shim] running in browser — DHT disabled (no-op).');
@@ -51,8 +47,13 @@ export default class BrowserDHT {
     return this;
   }
 
-  // Provide a compatible "listen" callback signature
   address() {
     return { port: 0, family: 'IPv4', address: '0.0.0.0' };
   }
 }
+
+// Named export expected by `torrent-discovery`
+export class Client extends BrowserDHT {}
+
+// Default export for other consumers
+export default BrowserDHT;

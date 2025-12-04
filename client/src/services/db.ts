@@ -1,6 +1,7 @@
 // src/db.ts
 
 import { Track, SocialPost, Bounty, ListenParty } from '../types';
+import { apiClient } from './api';
 
 type TrackMetadataInput = {
     title: string;
@@ -89,6 +90,27 @@ export const publishTrackMetadata = async (metadata: TrackMetadataInput) => {
         duration: metadata.duration ?? 0,
         sizeMB: 0,
     };
+
+    // Try to send to backend API if available
+    try {
+        await apiClient.post('/api/tracks', {
+            title: metadata.title,
+            artist: metadata.artist,
+            album: metadata.album,
+            duration: metadata.duration,
+            magnetURI: metadata.audioUrl,
+            coverUrl: metadata.coverUrl,
+            tags: metadata.tags ?? [],
+            signature: metadata.artistSignature ?? null,
+        });
+        // If backend accepts, also notify local listeners conservatively
+        trackListeners.forEach((listener) => listener(track));
+        return;
+    } catch (err) {
+        // fallback to local persistence
+        console.warn('publishTrackMetadata: backend unavailable, persisting locally', err);
+    }
+
     // Persist to local store
     const existing = readStoredTracks();
     existing.unshift(track);
