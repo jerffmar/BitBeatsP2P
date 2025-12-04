@@ -145,6 +145,10 @@ log "4. Clonando ou garantindo o código-fonte"
 if [ ! -d "$PROJECT_DIR/.git" ]; then
     log "Aviso: Não é um repositório Git. Assumindo que o código já está aqui."
 fi
+log "Garantindo case correto dos diretórios essenciais"
+
+npx prisma generate
+npx prisma db push
 
 log "Instalando dependências do projeto (Backend e Frontend)"
 npm install || error "Falha ao instalar dependências do projeto."

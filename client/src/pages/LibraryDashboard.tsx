@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { User, LibraryEntry, Track } from '../types';
+import { Trash2 } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -9,9 +10,10 @@ interface Props {
   tracks: Track[];
   usageMB: number;
   onImport: (file: File, metadata: { title: string; artist: string; album?: string }, onProgress?: (p: number) => void) => Promise<void>;
+  onDeleteTrack?: (trackId: string) => Promise<void>;
 }
 
-const LibraryDashboard: React.FC<Props> = ({ onImport, tracks, library, usageMB }) => {
+const LibraryDashboard: React.FC<Props> = ({ onImport, tracks, library, usageMB, onDeleteTrack }) => {
   // derive storage from real usageMB prop instead of mock
   const maxQuota = 10; // GB (keep a sane default)
   const storageUsedGB = Number((usageMB / 1024).toFixed(2));
@@ -39,6 +41,7 @@ const LibraryDashboard: React.FC<Props> = ({ onImport, tracks, library, usageMB 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [view, setView] = useState<'tracks' | 'artists' | 'albums'>('tracks');
 
   const inferMetadataFromFilename = (name: string) => {
     const base = name.replace(/\.[^/.]+$/, '');
@@ -216,7 +219,67 @@ const LibraryDashboard: React.FC<Props> = ({ onImport, tracks, library, usageMB 
         ))}
       </div>
 
-      {/* TODO: Lista de faixas e outras informações da biblioteca */}
+      {/* Library lists: Tracks / Artists / Albums */}
+      <div className="mt-10">
+        <div className="flex gap-2 mb-4">
+          <button className={clsx('px-3 py-2 rounded-md', view === 'tracks' ? 'bg-white/10' : 'bg-transparent')} onClick={() => setView('tracks')}>Tracks</button>
+          <button className={clsx('px-3 py-2 rounded-md', view === 'artists' ? 'bg-white/10' : 'bg-transparent')} onClick={() => setView('artists')}>Artists</button>
+          <button className={clsx('px-3 py-2 rounded-md', view === 'albums' ? 'bg-white/10' : 'bg-transparent')} onClick={() => setView('albums')}>Albums</button>
+        </div>
+
+        {view === 'artists' && (
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {Array.from(new Set(tracks.map((t) => t.artist || 'Unknown'))).map((artistName) => (
+              <div key={artistName} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="font-semibold text-white truncate">{artistName}</p>
+                <p className="text-xs text-gray-400 mt-1">{tracks.filter((t) => t.artist === artistName).length} tracks</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {view === 'albums' && (
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {Array.from(new Set(tracks.map((t) => t.album || 'Unknown'))).map((albumName) => (
+              <div key={albumName} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="font-semibold text-white truncate">{albumName}</p>
+                <p className="text-xs text-gray-400 mt-1">{tracks.filter((t) => t.album === albumName).length} tracks</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {view === 'tracks' && (
+          <div className="space-y-3 mt-4">
+            {tracks.map((t) => (
+              <div key={t.id} className="flex items-center justify-between rounded-lg p-3 bg-white/5 border border-white/6">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{t.title}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">{t.artist} • {t.album}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">{t.sizeMB ? `${t.sizeMB.toFixed(1)} MB` : ''}</span>
+                  <button
+                    title="Delete track"
+                    onClick={async () => {
+                      if (!confirm(`Delete "${t.title}" from your library? This will remove the file and stop seeding.`)) return;
+                      try {
+                        if (typeof onDeleteTrack === 'function') await onDeleteTrack(t.id);
+                      } catch (err) {
+                        console.error('Failed to delete track', err);
+                        alert('Failed to delete track.');
+                      }
+                    }}
+                    className="p-2 rounded-md bg-white/5 hover:bg-red-600/20"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

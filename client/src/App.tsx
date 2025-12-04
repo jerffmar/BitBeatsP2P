@@ -652,6 +652,24 @@ const App: React.FC = () => {
     audioRef.current?.pause();
   };
 
+  const handleDeleteTrack = useCallback(
+    async (trackId: string) => {
+      try {
+        await api.deleteTrack(trackId);
+        // remove from UI state
+        setTracks((prev) => prev.filter((t) => t.id !== trackId));
+        setLibrary((prev) => {
+          const copy = { ...prev };
+          delete copy[trackId];
+          return copy;
+        });
+      } catch (err) {
+        console.error('Failed to delete track', err);
+      }
+    },
+    [setTracks, setLibrary],
+  );
+
   const navLinks = useMemo(
     () => [
       { path: '/', icon: Radio, label: 'Discovery' },
@@ -732,7 +750,7 @@ const App: React.FC = () => {
             />
             <Route
               path="/library"
-              element={<LibraryDashboard user={user} library={library} tracks={tracks} usageMB={usageMB} onImport={handleLocalImport} />}
+              element={<LibraryDashboard user={user} library={library} tracks={tracks} usageMB={usageMB} onImport={handleLocalImport} onDeleteTrack={handleDeleteTrack} />}
             />
             <Route
               path="/artist/:id"

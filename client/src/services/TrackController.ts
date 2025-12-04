@@ -38,6 +38,8 @@ export class TrackController {
             { name: 'file', maxCount: 1 },
         ]), this.uploadTrack);
         this.router.get('/tracks', this.listTracks);
+        // delete track by id (remove seed, file and DB record)
+        this.router.delete('/tracks/:id', this.deleteTrack);
         this.router.get('/stream/:trackId', this.streamTrack);
     }
 
@@ -280,6 +282,41 @@ export class TrackController {
                 });
             }
             res.status(500).json({ error: 'Erro ao listar faixas.' });
+        }
+    };
+
+    // DELETE /api/tracks/:id
+    private deleteTrack = async (req: Request, res: Response) => {
+        const id = Number(req.params.id);
+        if (isNaN(id)) return res.status(400).json({ error: 'Invalid track id' });
+        try {
+            const track = await prisma.track.findUnique({ where: { id } });
+            if (!track) return res.status(404).json({ error: 'Track not found' });
+
+            // stop seeding if supported by SeedService (best-effort)
+            try {
+                if (seedService && typeof (seedService as any).stopSeeding === 'function') {
+                    await (seedService as any).stopSeeding(track.magnetURI || track.webSeedUrl || '');
+                }
+            } catch (e) {
+                console.warn('Failed to stop seeding for track', id, e);
+            }
+
+            // delete file from disk via DiskManager (best-effort)
+            try {
+                await diskManager.deleteFile(track.filePath);
+            } catch (e) {
+                console.warn('Failed to delete file from disk for track', id, e);
+                // continue — we still remove DB record
+            }
+
+            // remove DB record
+            await prisma.track.delete({ where: { id } });
+
+            return res.json({ success: true, id });
+        } catch (err) {
+            console.error('Failed to delete track', id, err);
+            return res.status(500).json({ error: 'Failed to delete track' });
         }
     };
 

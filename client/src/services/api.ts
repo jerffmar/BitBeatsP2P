@@ -36,11 +36,16 @@ const getTracks = async (): Promise<TrackDTO[]> => {
   return response.data;
 };
 
+const deleteTrack = async (id: string) => {
+  const response = await apiClient.delete(`/api/tracks/${id}`);
+  return response.data;
+};
+
 const toggleLike = async (_trackId: string) => {
   // Stub
 };
 
-export default { upload, getTracks, toggleLike };
+export default { upload, getTracks, toggleLike, deleteTrack };
 
 export interface TrackDTO {
   id: string;
