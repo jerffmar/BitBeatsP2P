@@ -198,7 +198,6 @@ app.get('/api/musicbrainz', async (req, res) => {
       return res.status(400).json({ message: 'Missing endpoint query param (e.g. endpoint=artist|recording|release).' });
     }
 
-    // Build MusicBrainz URL with incoming params (except `endpoint`)
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(req.query)) {
       if (k === 'endpoint') continue;
@@ -221,16 +220,13 @@ app.get('/api/musicbrainz', async (req, res) => {
 
     const text = await mbResp.text();
     if (!mbResp.ok) {
-      // forward status & text
       return res.status(mbResp.status).send(text);
     }
 
-    // parse JSON (MusicBrainz returns JSON when fmt=json)
     try {
       const json = JSON.parse(text);
       return res.json(json);
     } catch {
-      // fallback to plaintext
       return res.type('text').send(text);
     }
   } catch (error) {

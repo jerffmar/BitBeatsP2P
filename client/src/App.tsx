@@ -488,18 +488,16 @@ const App: React.FC = () => {
         }
         return;
       }
-
       setCurrentTrack(track);
       setIsPlaying(false);
       audioRef.current.pause();
 
       try {
-        // If the audioUrl is a magnet link, use addTorrent to obtain a playable blob URL
+        // If the audioUrl is a magnet link, convert via WebTorrent to a blob URL
         if (track.audioUrl?.startsWith?.('magnet:')) {
           try {
             const added = await addTorrent(track.audioUrl);
             audioRef.current.src = added.url;
-            // store destroy callback to revoke and remove torrent when switching
             currentTorrentDestroyRef.current = added.destroy;
           } catch (err) {
             console.error('Failed to open magnet via WebTorrent:', err);
@@ -511,7 +509,6 @@ const App: React.FC = () => {
             }
           }
         } else {
-          // normal HTTP or blob URL
           audioRef.current.src = track.audioUrl;
         }
 
