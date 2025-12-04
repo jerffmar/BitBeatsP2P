@@ -126,10 +126,7 @@ npm run build
 - `analyzeAudio(file)` — `client/src/services/audioEngine.ts`: currently returns placeholder `{ buffer: null, duration: 0, fingerprint: null }`; needs real decoding plus fingerprint extraction.
 - `normalizeAndTranscode(buffer)` — `client/src/services/audioEngine.ts`: stub that should normalize levels and transcode into the final torrent-ready format.
 - `signUpload(file, fingerprint)` — `client/src/services/p2pNetwork.ts`: mocked signing flow; must be replaced with the real cryptographic signing tied to the user’s identity key.
-
-## Roadmap / TODO
-
-- Implement MusicBrainz metadata matching, playback history tracking, recommendations, and PIX donation QR.
-- Add cron-based seed retention cleanup (90 days).
-- Flesh out landing/login flows accessible outside PWA mode.
-- Harden OPFS progress indicators and upload API progress callbacks.
+- `connectToPeer / sendMessage / discoverLocalPeers` — `client/src/services/p2pNetwork.ts`: return random/demo data instead of actual WebRTC/WebSocket signaling; replace with real swarm discovery + messaging.
+- `saveToVault / loadFromVault / getStoredBytes` — `client/src/services/storage.ts`: rely on `localStorage` + base64 instead of OPFS; reimplement using the File System Access API with proper streaming.
+- `initTorrentClient / seedFile / addTorrent` — `client/src/services/torrent.ts`: simple blob stubs; swap for real WebTorrent browser client logic (progress, cleanup, error handling).
+- `publishTrackMetadata` & other realtime helpers — `client/src/services/db.ts`: in-memory event bus; replace with actual backend-sourced events (WebSocket/SSE) tied to Prisma data.

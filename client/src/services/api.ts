@@ -2,22 +2,12 @@
 
 import axios from 'axios';
 
-const api = axios.create({
+export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000', // O Vite proxy irá redirecionar para http://localhost:3000
   headers: {
     'Content-Type': 'application/json',
   },
 });
-
-export type TrackDTO = {
-  id: number;
-  title: string;
-  artist: string;
-  album: string;
-  magnetURI: string;
-  sizeBytes: number;
-  duration: number;
-};
 
 const upload = async (file: File, metadata: any) => {
   const formData = new FormData();
@@ -26,7 +16,7 @@ const upload = async (file: File, metadata: any) => {
   // Simulação de autenticação de usuário (substituir por lógica real)
   // O backend está hardcoded para userId=1, mas em um app real o token estaria aqui.
 
-  const response = await api.post('/upload', formData, {
+  const response = await apiClient.post('/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -40,7 +30,7 @@ const upload = async (file: File, metadata: any) => {
 };
 
 const getTracks = async (): Promise<TrackDTO[]> => {
-  const response = await api.get('/tracks');
+  const response = await apiClient.get('/tracks');
   return response.data;
 };
 

@@ -75,7 +75,7 @@ ensure_module_case() {
     fi
 }
 resolve_server_entry() {
-    local candidates=("src/server.ts" "server.ts" "src/server.js" "server.js")
+    local candidates=("src/server.ts" "server.ts" "src/server.js" "server.js" "client/src/server.ts")
     for candidate in "${candidates[@]}"; do
         if [ -f "$PROJECT_DIR/$candidate" ]; then
             echo "$candidate"
@@ -159,7 +159,7 @@ npm run client:build || error "Falha ao construir o frontend."
 
 log "Migrando o banco de dados (Prisma/SQLite)"
 # Cria o arquivo prod.db e aplica as migrações
-npx prisma migrate deploy || error "Falha ao migrar o banco de dados."
+npx prisma db push || error "Falha ao sincronizar o banco de dados."
 npx prisma generate || error "Falha ao gerar o cliente Prisma."
 
 # --- 5. Configuração do Nginx ---

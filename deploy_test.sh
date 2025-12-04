@@ -116,6 +116,17 @@ if [ "$USER_NAME" != "root" ]; then
     sudo -u $USER_NAME pm2 delete bitbeats 2>/dev/null
 fi
 
+resolve_server_entry() {
+    local candidates=("src/server.ts" "server.ts" "src/server.js" "server.js" "client/src/server.ts")
+    for candidate in "${candidates[@]}"; do
+        if [ -f "$candidate" ]; then
+            echo "$candidate"
+            return
+        fi
+    done
+    error "Arquivo de entrada do servidor não encontrado."
+}
+
 SERVER_ENTRY=$(resolve_server_entry) || error "Arquivo de entrada do servidor não encontrado."
 log "Entrada do servidor detectada em $SERVER_ENTRY"
 

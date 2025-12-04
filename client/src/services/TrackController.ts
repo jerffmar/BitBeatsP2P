@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { DiskManager } from './DiskManager';
 import { SeedService } from './SeedService';
-import prisma from './db';
+import prisma from './prisma.server';
 import mime from 'mime-types';
 import { Prisma } from '@prisma/client';
 

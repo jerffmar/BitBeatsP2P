@@ -68,7 +68,7 @@ import api, { TrackDTO } from './services/api';
 import IdentifyPage from './pages/Identify';
 
 interface SearchBundle {
-  available: Track[];
+  local: Track[];
   catalog: {
     songs: GlobalCatalogEntry[];
     albums: GlobalCatalogEntry[];
@@ -170,7 +170,10 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState<'ALL' | 'SONG' | 'ALBUM' | 'ARTIST'>('ALL');
   const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<SearchBundle>({ available: [], catalog: { songs: [], albums: [], artists: [] } });
+  const [searchResults, setSearchResults] = useState<SearchBundle>({
+    local: [],
+    catalog: { songs: [], albums: [], artists: [] },
+  });
   const [newPostContent, setNewPostContent] = useState('');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -297,12 +300,19 @@ const App: React.FC = () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
     navigate(`/search?q=${searchQuery}`);
-    const catalog = await searchGlobalCatalog(searchQuery, 0, searchFilter);
-    const matches = tracks.filter(
-      (t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()) || t.artist.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-    setSearchResults({ available: matches, catalog });
-    setSearching(false);
+    try {
+      const catalog = await searchGlobalCatalog(searchQuery, 0, searchFilter);
+      const localMatches = tracks.filter(
+        (t) =>
+          t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.artist.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
+      setSearchResults({ local: localMatches, catalog });
+    } catch (error) {
+      console.error('Global search failed', error);
+    } finally {
+      setSearching(false);
+    }
   };
 
   const handleLoadMore = async () => {
@@ -314,16 +324,21 @@ const App: React.FC = () => {
         : searchFilter === 'ALBUM'
         ? searchResults.catalog.albums.length
         : searchResults.catalog.artists.length;
-    const appended = await searchGlobalCatalog(searchQuery, offset, searchFilter);
-    setSearchResults((prev) => ({
-      available: prev.available,
-      catalog: {
-        songs: searchFilter === 'SONG' ? [...prev.catalog.songs, ...appended.songs] : prev.catalog.songs,
-        albums: searchFilter === 'ALBUM' ? [...prev.catalog.albums, ...appended.albums] : prev.catalog.albums,
-        artists: searchFilter === 'ARTIST' ? [...prev.catalog.artists, ...appended.artists] : prev.catalog.artists,
-      },
-    }));
-    setSearching(false);
+    try {
+      const appended = await searchGlobalCatalog(searchQuery, offset, searchFilter);
+      setSearchResults((prev) => ({
+        local: prev.local,
+        catalog: {
+          songs: searchFilter === 'SONG' ? [...prev.catalog.songs, ...appended.songs] : prev.catalog.songs,
+          albums: searchFilter === 'ALBUM' ? [...prev.catalog.albums, ...appended.albums] : prev.catalog.albums,
+          artists: searchFilter === 'ARTIST' ? [...prev.catalog.artists, ...appended.artists] : prev.catalog.artists,
+        },
+      }));
+    } catch (error) {
+      console.error('Load more failed', error);
+    } finally {
+      setSearching(false);
+    }
   };
 
   const handlePostSubmit = async (event: React.FormEvent) => {
@@ -677,16 +692,16 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     <div className="space-y-10">
-                      {searchResults.available.length > 0 && (
+                      {searchResults.local.length > 0 && (
                         <section>
                           <div className="flex items-center gap-3 mb-4">
                             <h2 className="text-xl font-semibold text-white flex items-center gap-2">
                               <Check size={18} /> Already in swarm
                             </h2>
-                            <span className="text-xs text-gray-400">{searchResults.available.length} hits</span>
+                            <span className="text-xs text-gray-400">{searchResults.local.length} hits</span>
                           </div>
                           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {searchResults.available.map((track) => (
+                            {searchResults.local.map((track) => (
                               <div key={track.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                                 <img src={track.coverUrl} alt={track.title} className="rounded-xl mb-3 h-36 w-full object-cover" />
                                 <p className="font-semibold text-white truncate">{track.title}</p>
