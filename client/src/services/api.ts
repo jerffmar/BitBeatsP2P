@@ -13,24 +13,20 @@ const upload = async (file: File, _metadata: any) => {
   const formData = new FormData();
   formData.append('trackFile', file);
 
-  // Simulação de autenticação de usuário (substituir por lógica real)
-  // O backend está hardcoded para userId=1, mas em um app real o token estaria aqui.
-
-  const response = await apiClient.post('/upload', formData, {
+  const response = await apiClient.post('/api/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
     onUploadProgress: (progressEvent) => {
       const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
       console.log(`Upload progress: ${percentCompleted}%`);
-      // TODO: Adicionar lógica para atualizar o estado do progresso na UI
     },
   });
   return response.data;
 };
 
 const getTracks = async (): Promise<TrackDTO[]> => {
-  const response = await apiClient.get('/tracks');
+  const response = await apiClient.get('/api/tracks');
   return response.data;
 };
 

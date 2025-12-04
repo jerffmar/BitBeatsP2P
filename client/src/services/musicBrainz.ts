@@ -121,6 +121,11 @@ export const searchGlobalCatalog = async (
   filter: FilterType = 'ALL',
   limit = 8,
 ): Promise<CatalogResult> => {
+  // Guard against empty queries — MusicBrainz returns 400 if query is blank.
+  if (!query || !query.trim()) {
+    return { songs: [], albums: [], artists: [] };
+  }
+
   const shouldFetchSongs = filter === 'ALL' || filter === 'SONG';
   const shouldFetchAlbums = filter === 'ALL' || filter === 'ALBUM';
   const shouldFetchArtists = filter === 'ALL' || filter === 'ARTIST';

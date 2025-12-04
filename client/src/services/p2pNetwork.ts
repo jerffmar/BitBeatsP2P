@@ -1,3 +1,5 @@
+import { discoverLocalPeers as discoverPeersFromTorrent } from './torrent';
+
 const IDENTITY_STORAGE_KEY = 'bitbeats:identity-keypair';
 
 type StoredKeyPair = {
@@ -41,22 +43,26 @@ const ensureIdentityKeyPair = async (): Promise<CryptoKeyPair> => {
 const arrayBufferToBase64 = (buffer: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)));
 
 export const connectToPeer = async (peerId: string) => {
-  // Implement P2P connection logic here
+  // Placeholder — connection orchestration (signaling) not implemented here.
   console.log('Connecting to peer:', peerId);
   return { success: true };
 };
 
 export const sendMessage = async (peerId: string, message: string) => {
-  // Implement message sending logic here
+  // Placeholder — actual datachannel messaging requires signaling and channel management.
   console.log('Sending message to peer:', peerId, message);
   return { success: true };
 };
 
-export const discoverLocalPeers = async (): Promise<number> => {
-  // Mock discovery: pretend between 3–8 peers available
-  const peers = 3 + Math.floor(Math.random() * 6);
-  console.log('Discovered peers:', peers);
-  return peers;
+export const discoverLocalPeers = async (): Promise<string[]> => {
+  // Delegate to torrent service which inspects active torrent wires
+  try {
+    const list = await discoverPeersFromTorrent();
+    return list;
+  } catch (err) {
+    console.warn('discoverLocalPeers failed, returning empty list', err);
+    return [];
+  }
 };
 
 export const signUpload = async (file: File, fingerprint: string) => {

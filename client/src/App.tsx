@@ -75,7 +75,6 @@ import { initTorrentClient, seedFile, discoverLocalPeers } from './services/torr
 import { analyzeAudio, normalizeAndTranscode } from './services/audioEngine';
 import { searchGlobalCatalog } from './services/musicBrainz';
 import api, { TrackDTO } from './services/api';
-import IdentifyPage from './pages/Identify';
 
 interface SearchBundle {
   local: Track[];
@@ -198,7 +197,20 @@ const App: React.FC = () => {
 
   const refreshSeededLibrary = useCallback(async () => {
     try {
-      const serverTracks = await api.getTracks();
+      let serverTracks: any = await api.getTracks();
+      // Defensive: ensure we have an array. If not, try common shapes, otherwise bail.
+      if (!Array.isArray(serverTracks)) {
+        console.warn('[refreshSeededLibrary] unexpected /api/tracks response:', serverTracks);
+        if (serverTracks && Array.isArray(serverTracks.tracks)) {
+          serverTracks = serverTracks.tracks;
+        } else {
+          // Keep existing tracks; attempt to fall back to vault usage only
+          const bytes = await getStoredBytes().catch(() => 0);
+          setUsageMB(bytes / (1024 * 1024));
+          return;
+        }
+      }
+
       const normalized: Track[] = serverTracks.map((dto: TrackDTO) => ({
         id: dto.id,
         title: dto.title,
@@ -231,8 +243,12 @@ const App: React.FC = () => {
     if (!user) return;
     initDB();
     initTorrentClient();
-    // Fix: convert string[] to number for setActivePeers
-    discoverLocalPeers().then((peers) => setActivePeers(peers.length));
+    // Accept either a number (mock) or an array (future real peers)
+    discoverLocalPeers().then((peers) => {
+      if (Array.isArray(peers)) setActivePeers(peers.length);
+      else if (typeof peers === 'number') setActivePeers(peers);
+      else setActivePeers(0);
+    });
     refreshSeededLibrary();
 
     const tearDowns: Array<() => void> = [];
@@ -514,7 +530,6 @@ const App: React.FC = () => {
   const navLinks = useMemo(
     () => [
       { path: '/', icon: Radio, label: 'Discovery' },
-      { path: '/identify', icon: Search, label: 'Identify' },
       { path: '/bounties', icon: Zap, label: 'Bounty Board' },
       { path: '/swarm', icon: Users, label: 'Swarm Social' },
       { path: '/library', icon: HardDrive, label: 'Vault' },
@@ -787,7 +802,6 @@ const App: React.FC = () => {
               }
             />
             <Route path="/studio" element={<Navigate to="/library" replace />} />
-            <Route path="/identify" element={<IdentifyPage />} />
           </Routes>
         </main>
       </div>

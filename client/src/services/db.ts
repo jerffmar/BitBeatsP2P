@@ -16,6 +16,7 @@ type TrackMetadataInput = {
 
 type Unsubscribe = () => void;
 
+const TRACK_STORE_KEY = 'bitbeats:published-tracks';
 const postListeners = new Set<(post: SocialPost) => void>();
 const trackListeners = new Set<(track: Track) => void>();
 const bountyListeners = new Set<(bounty: Bounty) => void>();
@@ -23,9 +24,34 @@ const partyListeners = new Set<(party: ListenParty) => void>();
 const creditListeners = new Map<string, Set<(credits: number) => void>>();
 const creditTotals = new Map<string, number>();
 
+const readStoredTracks = (): Track[] => {
+    try {
+        const raw = localStorage.getItem(TRACK_STORE_KEY);
+        if (!raw) return [];
+        return JSON.parse(raw) as Track[];
+    } catch (err) {
+        console.warn('Failed to read stored tracks', err);
+        return [];
+    }
+};
+const writeStoredTracks = (tracks: Track[]) => {
+    try {
+        localStorage.setItem(TRACK_STORE_KEY, JSON.stringify(tracks));
+    } catch (err) {
+        console.warn('Failed to persist tracks', err);
+    }
+};
+
 export const initDB = () => {
     if (typeof window !== 'undefined') {
         console.log('[db] initialized mock realtime bus');
+        // Rehydrate persisted tracks and notify subscribers (async to allow subscribers to attach)
+        const persisted = readStoredTracks();
+        if (persisted.length) {
+            setTimeout(() => {
+                persisted.forEach((t) => trackListeners.forEach((cb) => cb(t)));
+            }, 50);
+        }
     }
 };
 
@@ -63,6 +89,10 @@ export const publishTrackMetadata = async (metadata: TrackMetadataInput) => {
         duration: metadata.duration ?? 0,
         sizeMB: 0,
     };
+    // Persist to local store
+    const existing = readStoredTracks();
+    existing.unshift(track);
+    writeStoredTracks(existing.slice(0, 200)); // cap to recent 200
     trackListeners.forEach((listener) => listener(track));
 };
 
