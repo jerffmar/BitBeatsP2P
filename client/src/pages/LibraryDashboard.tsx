@@ -1,8 +1,9 @@
 // client/src/pages/LibraryDashboard.tsx
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { User, LibraryEntry, Track } from '../types';
+import clsx from 'clsx';
 import { Trash2 } from 'lucide-react';
+import { User, LibraryEntry, Track } from '../types';
 
 interface Props {
   user: User;
