@@ -74,6 +74,7 @@ const fetchRecordings = async (query: string, offset: number, limit: number) => 
   });
   if (!data?.recordings) return [];
   return data.recordings.map((recording) => ({
+    id: recording.id, // <-- add required id
     mbid: recording.id,
     title: recording.title,
     artist: normalizeArtistCredit(recording['artist-credit']),
@@ -90,6 +91,7 @@ const fetchReleases = async (query: string, offset: number, limit: number) => {
   });
   if (!data?.releases) return [];
   return data.releases.map((release) => ({
+    id: release.id, // <-- add required id
     mbid: release.id,
     title: release.title,
     artist: normalizeArtistCredit(release['artist-credit']),
@@ -105,6 +107,7 @@ const fetchArtists = async (query: string, offset: number, limit: number) => {
   });
   if (!data?.artists) return [];
   return data.artists.map((artist) => ({
+    id: artist.id, // <-- add required id
     mbid: artist.id,
     title: artist.name,
     artist: artist.name,
@@ -129,13 +132,4 @@ export const searchGlobalCatalog = async (
   ]);
 
   return { songs, albums, artists };
-};
-
-export const searchGlobalCatalog = async (_query: string): Promise<{ songs: GlobalCatalogEntry[], albums: GlobalCatalogEntry[], artists: GlobalCatalogEntry[] }> => {
-  // Mock data with required 'id' property
-  return { 
-    songs: [{ id: '1', mbid: '1', title: 'Song', artist: 'Artist' }], 
-    albums: [], 
-    artists: [] 
-  };
 };

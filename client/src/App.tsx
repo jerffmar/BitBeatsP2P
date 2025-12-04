@@ -17,10 +17,7 @@ import {
   SkipBack,
   Volume2,
   Search,
-  Disc,
   Wifi,
-  HardDrive,
-  LogOut,
   Settings,
   Upload,
   Heart,
@@ -840,7 +837,7 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 justify-end w-1/3"></div>
+        <div className="flex items-center gap-3 justify-end w-1/3">
           <span className="text-xs text-gray-500 flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full">
             <Activity size={12} />
             {currentTrack && library[currentTrack.id]?.status === 'SEEDING' ? 'SEEDING' : 'NET OK'}
