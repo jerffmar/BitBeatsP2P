@@ -4,6 +4,7 @@ import { Request, Response, NextFunction, Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { DiskManager } from './DiskManager';
 import { SeedService } from './SeedService';
 import prisma from './prisma.server';
@@ -16,6 +17,17 @@ const upload = multer({ dest: path.join(process.cwd(), 'temp_uploads/') });
 // Inicialização dos serviços
 const diskManager = new DiskManager(prisma);
 const seedService = SeedService.getInstance();
+
+// helper: compute sha256 of a file (streamed)
+const computeFileSHA256 = async (filePath: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha256');
+        const stream = fs.createReadStream(filePath);
+        stream.on('error', (err) => reject(err));
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('end', () => resolve(hash.digest('hex')));
+    });
+};
 
 export class TrackController {
     public router: Router = Router();
@@ -31,7 +43,7 @@ export class TrackController {
 
     /**
      * Rota para upload de faixas.
-     * Multer -> Check Quota -> Save Disk -> Start Seeding -> Save DB.
+     * Multer -> Check Quota -> Deduplicate by SHA256 -> Save Disk -> Start Seeding -> Save DB.
      */
     private uploadTrack = async (req: Request, res: Response, next: NextFunction) => {
         const uploadedFile = this.resolveUploadedFile(req);
@@ -47,14 +59,70 @@ export class TrackController {
             const tempPath = uploadedFile.path;
             const originalName = uploadedFile.originalname;
 
+            // Quick quota check before heavy work
             const hasQuota = await diskManager.checkQuota(userId, fileSize);
             if (!hasQuota) {
                 await fs.promises.unlink(tempPath);
                 return res.status(403).json({ error: 'Cota de armazenamento excedida.' });
             }
 
-            // 2. Save Disk (move de temp para uploads e atualiza o uso de disco do usuário)
+            // Compute uploaded file hash
+            const uploadedHash = await computeFileSHA256(tempPath);
+
+            // 1) Attempt fast duplication lookup by size + sidecar/hash comparison
+            const candidates = await prisma.track.findMany({
+                where: { size: BigInt(fileSize) },
+                select: { id: true, filePath: true, title: true, artist: true, album: true, magnetURI: true, webSeedUrl: true }
+            });
+
+            for (const cand of candidates) {
+                try {
+                    const sidecarPath = `${cand.filePath}.sha256`;
+                    let candHash: string | null = null;
+
+                    if (fs.existsSync(sidecarPath)) {
+                        candHash = (await fs.promises.readFile(sidecarPath, 'utf8')).trim();
+                    } else if (fs.existsSync(cand.filePath)) {
+                        candHash = await computeFileSHA256(cand.filePath);
+                        // write sidecar for next time (best-effort)
+                        try {
+                            await fs.promises.writeFile(sidecarPath, candHash, 'utf8');
+                        } catch (e) {
+                            console.warn('Unable to write sidecar for candidate file:', sidecarPath, e);
+                        }
+                    }
+
+                    if (candHash && candHash === uploadedHash) {
+                        // Duplicate found: remove temp upload and return existing track info
+                        await fs.promises.unlink(tempPath).catch(() => { /* ignore */ });
+                        return res.status(200).json({
+                            message: 'Arquivo já existe no servidor (deduplicado).',
+                            existing: true,
+                            track: {
+                                id: cand.id,
+                                title: cand.title,
+                                artist: cand.artist,
+                                album: cand.album,
+                                magnetURI: cand.magnetURI,
+                                webSeedUrl: cand.webSeedUrl,
+                            }
+                        });
+                    }
+                } catch (innerErr) {
+                    console.warn('Duplication check error for candidate', cand.filePath, innerErr);
+                    // continue checking other candidates
+                }
+            }
+
+            // 2) No duplicate -> proceed with normal save + seed flow
             const filePath = await diskManager.saveFile(userId, tempPath, originalName);
+
+            // write sidecar for uploaded file to speed future dedupe checks
+            try {
+                await fs.promises.writeFile(`${filePath}.sha256`, uploadedHash, 'utf8');
+            } catch (e) {
+                console.warn('Failed writing sha256 sidecar for new file:', e);
+            }
 
             // 3. Save DB (cria um registro Track inicial)
             let track = await prisma.track.create({
@@ -80,8 +148,9 @@ export class TrackController {
                 data: { magnetURI, webSeedUrl }
             });
 
-            res.status(201).json({
+            return res.status(201).json({
                 message: 'Faixa enviada e seeding iniciado com sucesso.',
+                existing: false,
                 track: {
                     id: track.id,
                     title: track.title,
@@ -105,7 +174,6 @@ export class TrackController {
                 return res.status(503).json({ error: message });
             }
 
-            // Provide more info when running locally to surface the real exception
             if (isDev && error instanceof Error) {
                 return res.status(500).json({
                     error: 'Erro interno do servidor durante o upload.',

@@ -121,12 +121,41 @@ npm run build
 - **Missing modules (case-sensitive FS):** `deploy.sh` creates symlinks to reconcile Windows/macOS vs Linux casing.
 - **PM2 env vars:** HOST/PORT injected via `env` when starting the process—verify with `pm2 show bitbeats`.
 
-## Pending Mock Implementations
+## Pending Mock Implementations (current status)
 
-- `analyzeAudio(file)` — `client/src/services/audioEngine.ts`: currently returns placeholder `{ buffer: null, duration: 0, fingerprint: null }`; needs real decoding plus fingerprint extraction.
-- `normalizeAndTranscode(buffer)` — `client/src/services/audioEngine.ts`: stub that should normalize levels and transcode into the final torrent-ready format.
-- `signUpload(file, fingerprint)` — `client/src/services/p2pNetwork.ts`: mocked signing flow; must be replaced with the real cryptographic signing tied to the user’s identity key.
-- `connectToPeer / sendMessage / discoverLocalPeers` — `client/src/services/p2pNetwork.ts`: return random/demo data instead of actual WebRTC/WebSocket signaling; replace with real swarm discovery + messaging.
-- `saveToVault / loadFromVault / getStoredBytes` — `client/src/services/storage.ts`: rely on `localStorage` + base64 instead of OPFS; reimplement using the File System Access API with proper streaming.
-- `initTorrentClient / seedFile / addTorrent` — `client/src/services/torrent.ts`: simple blob stubs; swap for real WebTorrent browser client logic (progress, cleanup, error handling).
-- `publishTrackMetadata` & other realtime helpers — `client/src/services/db.ts`: in-memory event bus; replace with actual backend-sourced events (WebSocket/SSE) tied to Prisma data.
+- `analyzeAudio(file)` — client/src/services/audioEngine.ts
+  - Status: STILL A MOCK. Current code returns placeholder values; import/flow integrated but real decoding + fingerprint extraction not implemented.
+  - Next steps: implement WebAudio/AudioContext decoding or use ffmpeg-wasm to decode and extract fingerprint (Chromaprint/AcoustID).
+
+- `normalizeAndTranscode(buffer)` — client/src/services/audioEngine.ts
+  - Status: STILL A MOCK. Transcoding/normalization flow is wired into import pipeline but returns the original buffer or a simple passthrough.
+  - Next steps: integrate ffmpeg-wasm or offload to server-side transcoding; ensure consistent container/codec for torrent seeding.
+
+- `signUpload(file, fingerprint)` — client/src/services/p2pNetwork.ts + client/src/services/auth.ts
+  - Status: PARTIALLY IMPLEMENTED on client. A WebCrypto-based ECDSA keypair is generated/persisted and signUpload produces a signed payload. Server-side verification / identity management is not implemented.
+  - Next steps: implement server-side signature verification and associate identity keys to User records (Prisma), or integrate a PKI/identity service.
+
+- `connectToPeer / sendMessage / discoverLocalPeers` — client/src/services/p2pNetwork.ts
+  - Status: PARTIALLY IMPLEMENTED FOR DEMO. Local BroadcastChannel-based signaling exists for same-origin demos; discoverLocalPeers delegates to client torrent service. Real WebRTC signaling / STUN/TURN and cross-client discovery are not implemented.
+  - Next steps: add a signaling channel (WebSocket or peer server) and integrate proper peer discovery and NAT traversal (STUN/TURN).
+
+- `saveToVault / loadFromVault / getStoredBytes` — client/src/services/storage.ts
+  - Status: PARTIALLY IMPLEMENTED. OPFS/File System Access API path attempted with fallback to base64 localStorage. Works in browsers without full OPFS support but not optimized for large files or streaming.
+  - Next steps: implement streaming writes/reads to OPFS (WritableStream), add eviction policy hooks, and avoid base64 fallback for large media.
+
+- `initTorrentClient / seedFile / addTorrent` — client/src/services/torrent.ts
+  - Status: STILL A MOCK / ENV-SENSITIVE. App handles failures and falls back to blob playback; server-side seeding is implemented via webtorrent-hybrid (SeedService) but client torrent logic may be a stub or fragile across browsers.
+  - Next steps: provide a robust browser `webtorrent` client bundle (polyfills), validate `bittorrent-dht` shim behavior, and add graceful feature-detection to enable/disable DHT/WebRTC features.
+
+- `publishTrackMetadata` & realtime helpers — client/src/services/db.ts
+  - Status: PARTIALLY IMPLEMENTED. publishTrackMetadata attempts to POST to backend and falls back to a local in-memory store persisted to localStorage; server endpoints exist but full realtime plumbing (SSE/WebSocket) and persisted metadata indexing are incomplete.
+  - Next steps: add server endpoints for ingesting metadata, persist metadata in Prisma (Track fields), and implement a realtime broadcast (SSE or WebSocket) for clients.
+
+- Server-side deduplication / hashing
+  - Status: IMPLEMENTED. TrackController now computes SHA-256 for uploads, checks size-based candidates and .sha256 sidecars, and avoids duplicate saves/seeding when matches exist.
+
+- Server-side seeding (SeedService) and HTTP Range stream endpoint
+  - Status: IMPLEMENTED (basic). SeedService integrates webtorrent-hybrid and TrackController provides /api/stream/:trackId with 206 support. Verify production robustness, error handling, and retention/cron behavior.
+
+- Quota & DiskManager
+  - Status: IMPLEMENTED (basic). DiskManager quota checks used during upload; BigInt accounting in DB is used. Verify cross-platform paths and permission edge cases.
