@@ -62,6 +62,36 @@ export interface GlobalCatalogEntry {
   coverUrl?: string;
 }
 
+// New: Artist and Release/Album DTOs used by the UI/musicbrainz client
+export interface ArtistDetail {
+  mbid: string;
+  name: string;
+  sortName?: string;
+  bio?: string;
+  country?: string;
+  lifeSpan?: { begin?: string; end?: string; ended?: boolean };
+  releases?: ReleaseSummary[];
+}
+
+export interface ReleaseSummary {
+  mbid: string;
+  title: string;
+  date?: string;
+  type?: string; // 'Album' | 'Single' etc
+  coverUrl?: string;
+}
+
+export interface ReleaseDetail {
+  mbid: string;
+  title: string;
+  date?: string;
+  status?: string;
+  disambiguation?: string;
+  coverUrl?: string;
+  artistCredit?: string;
+  tracks?: Array<{ position?: string; title: string; length?: number }>;
+}
+
 export interface Bounty {
   id: string;
   amount: number;

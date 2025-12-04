@@ -139,3 +139,151 @@ export const searchGlobalCatalog = async (
 
   return { songs, albums, artists };
 };
+
+/**
+ * Fetch artist by MBID with relations (including urls & releases).
+ * Attempts to build a short bio using a Wikipedia relation when available.
+ */
+export const getArtistById = async (mbid: string): Promise<import('../types').ArtistDetail | null> => {
+  if (!mbid) return null;
+  const data = await requestMusicBrainz<any>(`artist/${mbid}`, { inc: 'url-rels+release-groups+releases' });
+  if (!data || !data.id) return null;
+
+  const name: string = data.name;
+  let bio: string | undefined;
+
+  // Try to find a Wikipedia url relation
+  const wikiRel = (data.relations || []).find((r: any) =>
+    r.type?.toLowerCase().includes('wikipedia') ||
+    (r.url && r.url.resource && String(r.url.resource).includes('wikipedia.org')),
+  );
+
+  if (wikiRel && wikiRel.url && wikiRel.url.resource) {
+    try {
+      // extract page title from URL and ask Wikipedia REST summary
+      const url = new URL(wikiRel.url.resource);
+      const title = decodeURIComponent(url.pathname.replace(/^\/wiki\//, ''));
+      const wpResp = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+      if (wpResp.ok) {
+        const wpJson = await wpResp.json();
+        if (typeof wpJson.extract === 'string') bio = wpJson.extract;
+      }
+    } catch (e) {
+      // ignore wiki fetch errors
+    }
+  }
+
+  // Build simple list of releases (release-groups/releases returned by inc)
+  const releases: import('../types').ReleaseSummary[] = [];
+  if (Array.isArray(data['releases'])) {
+    for (const r of data['releases']) {
+      releases.push({
+        mbid: r.id,
+        title: r.title,
+        date: r.date,
+        type: r['release-group']?.primary_type || undefined,
+        coverUrl: buildCoverUrl(r) ?? COVER_PLACEHOLDER,
+      });
+    }
+  }
+  // Also try release-groups if available (avoids duplicates)
+  if (Array.isArray(data['release-groups'])) {
+    for (const rg of data['release-groups']) {
+      releases.push({
+        mbid: rg.id,
+        title: rg.title,
+        date: rg['first-release-date'],
+        type: rg['primary-type'],
+        coverUrl: rg.id ? `https://coverartarchive.org/release-group/${rg.id}/front` : COVER_PLACEHOLDER,
+      });
+    }
+  }
+
+  // dedupe by mbid and prefer ones with covers/dates
+  const seen = new Map<string, import('../types').ReleaseSummary>();
+  for (const r of releases) {
+    if (!r.mbid) continue;
+    const prev = seen.get(r.mbid);
+    if (!prev) seen.set(r.mbid, r);
+    else {
+      // merge fields preferring cover/date
+      seen.set(r.mbid, { ...prev, ...r, coverUrl: prev.coverUrl || r.coverUrl, date: prev.date || r.date });
+    }
+  }
+
+  const merged = Array.from(seen.values()).sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return b.date.localeCompare(a.date);
+  });
+
+  return {
+    mbid: data.id,
+    name,
+    sortName: data['sort-name'],
+    bio,
+    country: data.country,
+    lifeSpan: data['life-span'],
+    releases: merged,
+  };
+};
+
+/**
+ * Fetch a release (album) and its recordings (tracklist)
+ */
+export const getReleaseById = async (mbid: string): Promise<import('../types').ReleaseDetail | null> => {
+  if (!mbid) return null;
+  const data = await requestMusicBrainz<any>(`release/${mbid}`, { inc: 'recordings+artist-credits' });
+  if (!data || !data.id) return null;
+
+  // collect tracks across media
+  const tracks: Array<{ position?: string; title: string; length?: number }> = [];
+  if (Array.isArray(data.media)) {
+    for (const media of data.media) {
+      if (Array.isArray(media.tracks)) {
+        for (const t of media.tracks) {
+          tracks.push({
+            position: t.position != null ? String(t.position) : t.number,
+            title: t.title,
+            length: typeof t.length === 'number' ? t.length : (t.length ? Number(t.length) : undefined),
+          });
+        }
+      }
+    }
+  }
+
+  const cover = data.id ? `https://coverartarchive.org/release/${data.id}/front` : undefined;
+
+  return {
+    mbid: data.id,
+    title: data.title,
+    date: data.date,
+    status: data.status,
+    disambiguation: data.disambiguation,
+    coverUrl: cover ?? COVER_PLACEHOLDER,
+    artistCredit: Array.isArray(data['artist-credit']) ? data['artist-credit'].map((ac) => ac.name || ac.artist?.name).join(', ') : undefined,
+    tracks,
+  };
+};
+
+/**
+ * Search recent releases by artist name (used to build mosaics when artist profile is poor)
+ */
+export const getReleasesByArtistName = async (artistName: string, limit = 8) => {
+  if (!artistName) return [];
+  // Use release search query by artist name; results may include duplicates but it's ok for mosaic
+  const q = `artist:${artistName}`;
+  const data = await requestMusicBrainz<any>('release', { query: q, limit, inc: 'artist-credits' });
+  if (!data?.releases) return [];
+  return data.releases
+    .map((r: any) => ({
+      mbid: r.id,
+      title: r.title,
+      date: r.date,
+      coverUrl: buildCoverUrl(r) ?? COVER_PLACEHOLDER,
+    }))
+    .slice(0, limit);
+};
+
+export { searchGlobalCatalog };
