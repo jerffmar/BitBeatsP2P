@@ -9,7 +9,7 @@ export const apiClient = axios.create({
   },
 });
 
-const upload = async (file: File, metadata: any) => {
+const upload = async (file: File, _metadata: any) => {
   const formData = new FormData();
   formData.append('trackFile', file);
 
@@ -34,8 +34,18 @@ const getTracks = async (): Promise<TrackDTO[]> => {
   return response.data;
 };
 
-const toggleLike = async (trackId: string) => {
+const toggleLike = async (_trackId: string) => {
   // Stub
 };
 
 export default { upload, getTracks, toggleLike };
+
+export interface TrackDTO {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number;
+  magnetURI?: string;
+  sizeBytes?: number;
+}

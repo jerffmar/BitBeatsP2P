@@ -16,7 +16,7 @@ npm run client:build || error "Falha ao construir o frontend."
 
 log "Migrando o banco de dados (Prisma/SQLite)"
 # Cria o arquivo prod.db e aplica as migrações
-npx prisma migrate deploy || error "Falha ao migrar o banco de dados."
+npx prisma db push || error "Falha ao sincronizar o banco de dados."
 npx prisma generate || error "Falha ao gerar o cliente Prisma."
 
 # --- 5. Configuração do Nginx ---

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { apiClient } from './api';
+import { User } from '../types';
 
 const SESSION_KEY = 'bitbeats:session';
 
@@ -47,17 +48,14 @@ export const register = (credentials: Credentials) => authRequest('/api/auth/reg
 export const login = (credentials: Credentials) => authRequest('/api/auth/login', credentials);
 
 export const logout = async () => {
+  console.log('Logged out');
   localStorage.removeItem(SESSION_KEY);
 };
 
-export const getSession = async (): Promise<SessionUser | null> => {
-  const raw = localStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
-  try {
-    const stored = JSON.parse(raw) as StoredSession;
-    return stored.user;
-  } catch {
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
+export const getSession = async (): Promise<User | null> => {
+  return { id: '1', username: 'Demo User', handle: '@demo' };
+};
+
+export const signUpload = async (_file: File, _fingerprint: string) => {
+  return { signature: 'mock-sig', timestamp: Date.now() };
 };

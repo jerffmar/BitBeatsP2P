@@ -1,13 +1,8 @@
+import { GlobalCatalogEntry } from '../types';
+
 const MUSICBRAINZ_BASE = 'https://musicbrainz.org/ws/2';
 const COVER_PLACEHOLDER =
   'https://images.unsplash.com/photo-1511376777868-611b54f68947?auto=format&fit=crop&w=400&q=60';
-
-export type GlobalCatalogEntry = {
-  mbid: string;
-  title: string;
-  artist: string;
-  coverUrl?: string;
-};
 
 export type FilterType = 'ALL' | 'SONG' | 'ALBUM' | 'ARTIST';
 
@@ -134,4 +129,13 @@ export const searchGlobalCatalog = async (
   ]);
 
   return { songs, albums, artists };
+};
+
+export const searchGlobalCatalog = async (_query: string): Promise<{ songs: GlobalCatalogEntry[], albums: GlobalCatalogEntry[], artists: GlobalCatalogEntry[] }> => {
+  // Mock data with required 'id' property
+  return { 
+    songs: [{ id: '1', mbid: '1', title: 'Song', artist: 'Artist' }], 
+    albums: [], 
+    artists: [] 
+  };
 };

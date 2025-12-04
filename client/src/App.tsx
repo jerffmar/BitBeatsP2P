@@ -13,16 +13,30 @@ import {
   Music,
   Play,
   Pause,
-  Radio,
-  Search,
-  Send,
-  SkipBack,
   SkipForward,
-  Users,
+  SkipBack,
   Volume2,
+  Search,
+  Disc,
   Wifi,
+  HardDrive,
+  LogOut,
+  Settings,
+  Upload,
+  Heart,
+  User as UserIcon,
+  Database,
+  Radio,
   Zap,
+  Users,
+  Send,
   Layers,
+  Globe,
+  Headphones,
+  DollarSign,
+  Share2,
+  Menu,
+  X
 } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -36,17 +50,17 @@ import { LibraryAlbums } from './pages/LibraryAlbums';
 import { LibraryTracks } from './pages/LibraryTracks';
 import { LikeButton } from './components/LikeButton';
 import {
+  User,
   Track,
   LibraryEntry,
   UserStats,
   StorageConfig,
-  User,
   SocialPost,
   GlobalCatalogEntry,
   Bounty,
-  ListenParty,
+  ListenParty
 } from './types';
-import { getSession, logout } from './services/auth';
+import { getSession, logout, signUpload } from './services/auth';
 import {
   initDB,
   subscribeToPosts,
@@ -60,8 +74,7 @@ import {
   createParty,
 } from './services/db';
 import { saveToVault, loadFromVault, getStoredBytes } from './services/storage';
-import { discoverLocalPeers, signUpload } from './services/p2pNetwork';
-import { initTorrentClient, seedFile, addTorrent } from './services/torrent';
+import { initTorrentClient, seedFile, discoverLocalPeers } from './services/torrent';
 import { analyzeAudio, normalizeAndTranscode } from './services/audioEngine';
 import { searchGlobalCatalog } from './services/musicBrainz';
 import api, { TrackDTO } from './services/api';
@@ -190,13 +203,13 @@ const App: React.FC = () => {
     try {
       const serverTracks = await api.getTracks();
       const normalized: Track[] = serverTracks.map((dto: TrackDTO) => ({
-        id: dto.id.toString(),
-        title: dto.title ?? 'Untitled Upload',
-        artist: dto.artist ?? 'Unknown Artist',
-        album: dto.album ?? 'Uploads',
-        coverUrl: 'https://images.unsplash.com/photo-1511376777868-611b54f68947?auto=format&fit=crop&w=600&q=60',
-        audioUrl: dto.magnetURI,
-        duration: dto.duration ?? 0,
+        id: dto.id,
+        title: dto.title,
+        artist: dto.artist,
+        album: dto.album,
+        coverUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop',
+        audioUrl: dto.magnetURI || '',
+        duration: dto.duration,
         sizeMB: Number(dto.sizeBytes ?? 0) / (1024 * 1024),
       }));
       const normalizedIds = new Set(normalized.map((track) => track.id));
@@ -221,7 +234,8 @@ const App: React.FC = () => {
     if (!user) return;
     initDB();
     initTorrentClient();
-    discoverLocalPeers().then(setActivePeers);
+    // Fix: convert string[] to number for setActivePeers
+    discoverLocalPeers().then((peers) => setActivePeers(peers.length));
     refreshSeededLibrary();
 
     const tearDowns: Array<() => void> = [];
@@ -256,7 +270,9 @@ const App: React.FC = () => {
     );
     tearDowns.push(
       subscribeToCredits(user.id, (credits: number) => {
-        setStats((prev) => ({ ...prev, credits }));
+        if (credits !== undefined) {
+          setStats((prev: any) => ({ ...prev, credits }));
+        }
       }),
     );
 
@@ -365,6 +381,7 @@ const App: React.FC = () => {
         console.log('Audio analysis complete:', analysis);
         const transposed = await normalizeAndTranscode(analysis.buffer);
         console.log('Transcoding complete');
+        // Fix: extract signature string from signed object
         const signed = await signUpload(file, analysis.fingerprint);
         console.log('Signing complete');
         const normalizedSizeMB = transposed.byteLength / (1024 * 1024);
@@ -391,11 +408,13 @@ const App: React.FC = () => {
         setLibrary((prev) => ({
           ...prev,
           [localTrackId]: {
+            id: localTrackId,
+            dateAdded: Date.now(),
             trackId: localTrackId,
             status: 'SEEDING',
             progress: 1,
             addedAt: Date.now(),
-            lastPlayed: Date.now(),
+            lastPlayed: 0,
           },
         }));
         setUsageMB((prev) => prev + normalizedSizeMB);
@@ -409,7 +428,7 @@ const App: React.FC = () => {
           coverUrl: optimisticTrack.coverUrl,
           license: 'CC-BY',
           tags: ['vault', 'import'],
-          artistSignature: signed,
+          artistSignature: signed.signature,
         });
         console.log('Track metadata published successfully');
       } catch (error: any) {
@@ -821,7 +840,7 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 justify-end w-1/3">
+        <div className="flex items-center gap-3 justify-end w-1/3"></div>
           <span className="text-xs text-gray-500 flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full">
             <Activity size={12} />
             {currentTrack && library[currentTrack.id]?.status === 'SEEDING' ? 'SEEDING' : 'NET OK'}

@@ -1,8 +1,17 @@
 // client/src/pages/LibraryDashboard.tsx
 
 import React from 'react';
+import { User, LibraryEntry, Track } from '../types';
 
-const LibraryDashboard: React.FC = () => {
+interface Props {
+  user: User;
+  library: Record<string, LibraryEntry>;
+  tracks: Track[];
+  usageMB: number;
+  onImport: (file: File, metadata: { title: string; artist: string; album?: string }) => Promise<void>;
+}
+
+const LibraryDashboard: React.FC<Props> = () => {
   // Dados simulados
   const storageUsed = 3.5; // GB
   const maxQuota = 10; // GB

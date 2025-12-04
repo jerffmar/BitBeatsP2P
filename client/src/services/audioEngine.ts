@@ -124,11 +124,12 @@ const buildFingerprintPayload = (audioBuffer: AudioBuffer) => {
   return new Float32Array(samples).buffer;
 };
 
-export type AnalysisResult = {
-  buffer: ArrayBuffer;
+export interface AnalysisResult {
   duration: number;
+  format: string;
   fingerprint: string;
-};
+  buffer: ArrayBuffer;
+}
 
 export const analyzeAudio = async (file: File): Promise<AnalysisResult> => {
   const fileBuffer = await file.arrayBuffer();
@@ -141,6 +142,7 @@ export const analyzeAudio = async (file: File): Promise<AnalysisResult> => {
     buffer: wavBuffer,
     duration: decoded.duration,
     fingerprint,
+    format: 'audio/wav',
   };
 };
 
