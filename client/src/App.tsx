@@ -406,7 +406,13 @@ const App: React.FC = () => {
       if (!audioRef.current) return;
       if (currentTrack?.id === track.id) {
         if (audioRef.current.paused) {
-          await audioRef.current.play();
+          try {
+            await audioRef.current.play();
+          } catch (error: any) {
+            if (error.name !== 'AbortError') {
+              console.error('Play error:', error);
+            }
+          }
         } else {
           audioRef.current.pause();
         }
@@ -418,14 +424,18 @@ const App: React.FC = () => {
       const cached = await loadFromVault(track.id);
       if (cached) {
         audioRef.current.src = cached;
-      } else if (track.audioUrl.startsWith('magnet:')) {
-        const stream = await addTorrent(track.audioUrl, () => undefined);
-        audioRef.current.src = stream.url;
       } else {
-        audioRef.current.src = track.audioUrl;
+        // Use HTTP streaming for reliable playback
+        audioRef.current.src = `/api/stream/${track.id}`;
       }
-      await audioRef.current.play();
-      setIsPlaying(true);
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Play error:', error);
+        }
+      }
       setLibrary((prev) => ({
         ...prev,
         [track.id]: prev[track.id] ?? {

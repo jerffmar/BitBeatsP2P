@@ -1,4 +1,4 @@
-import { IdentifiedTrack } from '../types';
+import { GlobalCatalogEntry, IdentifiedTrack } from '../types';
 
 type IdentifyPayload = {
   title?: string;
@@ -27,3 +27,8 @@ export const identifyTrack = (payload: IdentifyPayload) =>
 
 export const fetchIdentifiedLibrary = () =>
   request<IdentifiedTrack[]>('/api/library/identified');
+
+export const searchGlobalCatalog = async (query: string, offset: number, filter: string): Promise<{ songs: GlobalCatalogEntry[]; albums: GlobalCatalogEntry[]; artists: GlobalCatalogEntry[] }> => {
+  // Stub: return search results
+  return { songs: [], albums: [], artists: [] };
+};
