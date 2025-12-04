@@ -1,3 +1,4 @@
 node_modules
 controllers
 .client/dist
+.uploads/*
