@@ -51,8 +51,9 @@ const normalizeArtistCredit = (credits?: Array<{ name?: string; artist?: { name?
 
 const requestMusicBrainz = async <T>(endpoint: string, params: Record<string, string | number>): Promise<T | null> => {
   try {
-    const url = new URL(`${MUSICBRAINZ_BASE}/${endpoint}`);
-    url.searchParams.set('fmt', 'json');
+    // Proxy through our backend to avoid CORS issues
+    const url = new URL('/api/musicbrainz', window.location.origin);
+    url.searchParams.set('endpoint', endpoint);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, String(value)));
     const response = await fetch(url.toString(), {
       headers: { Accept: 'application/json' },

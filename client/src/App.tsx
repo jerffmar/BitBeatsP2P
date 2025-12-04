@@ -71,7 +71,7 @@ import {
   createParty,
 } from './services/db';
 import { saveToVault, loadFromVault, getStoredBytes } from './services/storage';
-import { initTorrentClient, seedFile, discoverLocalPeers } from './services/torrent';
+import { initTorrentClient, seedFile, discoverLocalPeers, addTorrent } from './services/torrent';
 import { analyzeAudio, normalizeAndTranscode } from './services/audioEngine';
 import { searchGlobalCatalog } from './services/musicBrainz';
 import api, { TrackDTO } from './services/api';
@@ -163,6 +163,7 @@ const App: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
+  const currentTorrentDestroyRef = useRef<(() => void) | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
@@ -244,11 +245,17 @@ const App: React.FC = () => {
     initDB();
     initTorrentClient();
     // Accept either a number (mock) or an array (future real peers)
-    discoverLocalPeers().then((peers) => {
-      if (Array.isArray(peers)) setActivePeers(peers.length);
-      else if (typeof peers === 'number') setActivePeers(peers);
-      else setActivePeers(0);
-    });
+    (async () => {
+      try {
+        const peers = await discoverLocalPeers();
+        if (Array.isArray(peers)) setActivePeers(peers.length);
+        else if (typeof peers === 'number') setActivePeers(peers);
+        else setActivePeers(0);
+      } catch (err) {
+        console.warn('discoverLocalPeers failed:', err);
+        setActivePeers(0);
+      }
+    })();
     refreshSeededLibrary();
 
     const tearDowns: Array<() => void> = [];
@@ -345,7 +352,8 @@ const App: React.FC = () => {
   };
 
   const handleLoadMore = async () => {
-    if (searchFilter === 'ALL' || searching) return;
+    // Guard: avoid requesting MusicBrainz with an empty query (results in 400)
+    if (searchFilter === 'ALL' || searching || !searchQuery.trim()) return;
     setSearching(true);
     const offset =
       searchFilter === 'SONG'
@@ -455,6 +463,17 @@ const App: React.FC = () => {
   const playTrack = useCallback(
     async (track: Track) => {
       if (!audioRef.current) return;
+
+      // Clean up any previously created blob URL / torrent for playback
+      if (currentTorrentDestroyRef.current) {
+        try {
+          currentTorrentDestroyRef.current();
+        } catch (err) {
+          console.warn('Failed to destroy previous torrent/URL', err);
+        }
+        currentTorrentDestroyRef.current = null;
+      }
+
       if (currentTrack?.id === track.id) {
         if (audioRef.current.paused) {
           try {
@@ -469,18 +488,47 @@ const App: React.FC = () => {
         }
         return;
       }
+
       setCurrentTrack(track);
       setIsPlaying(false);
       audioRef.current.pause();
-      audioRef.current.src = track.audioUrl;
+
       try {
-        await audioRef.current.play();
-        setIsPlaying(true);
-      } catch (error: any) {
-        if (error.name !== 'AbortError') {
-          console.error('Play error:', error);
+        // If the audioUrl is a magnet link, use addTorrent to obtain a playable blob URL
+        if (track.audioUrl?.startsWith?.('magnet:')) {
+          try {
+            const added = await addTorrent(track.audioUrl);
+            audioRef.current.src = added.url;
+            // store destroy callback to revoke and remove torrent when switching
+            currentTorrentDestroyRef.current = added.destroy;
+          } catch (err) {
+            console.error('Failed to open magnet via WebTorrent:', err);
+            // fallback: try to use webSeedUrl if present on track object
+            if ((track as any).webSeedUrl) {
+              audioRef.current.src = (track as any).webSeedUrl;
+            } else {
+              throw err;
+            }
+          }
+        } else {
+          // normal HTTP or blob URL
+          audioRef.current.src = track.audioUrl;
         }
+
+        try {
+          await audioRef.current.play();
+          setIsPlaying(true);
+        } catch (error: any) {
+          if (error.name !== 'AbortError') {
+            console.error('Play error:', error);
+          }
+        }
+      } catch (err) {
+        console.error('Playback setup failed:', err);
+        // reset currentTrack if playback couldn't be prepared
+        setCurrentTrack(null);
       }
+
       setLibrary((prev) => ({
         ...prev,
         [track.id]: prev[track.id] ?? {

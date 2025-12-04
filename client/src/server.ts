@@ -190,6 +190,55 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// Proxy endpoint to avoid browser CORS when calling MusicBrainz
+app.get('/api/musicbrainz', async (req, res) => {
+  try {
+    const endpoint = String(req.query.endpoint || '');
+    if (!endpoint) {
+      return res.status(400).json({ message: 'Missing endpoint query param (e.g. endpoint=artist|recording|release).' });
+    }
+
+    // Build MusicBrainz URL with incoming params (except `endpoint`)
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(req.query)) {
+      if (k === 'endpoint') continue;
+      if (Array.isArray(v)) {
+        v.forEach((val) => params.append(k, String(val)));
+      } else {
+        params.set(k, String(v));
+      }
+    }
+    params.set('fmt', 'json');
+
+    const mbUrl = `https://musicbrainz.org/ws/2/${endpoint}?${params.toString()}`;
+
+    const mbResp = await fetch(mbUrl, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'BitBeats/1.0 (https://example.com)',
+      },
+    });
+
+    const text = await mbResp.text();
+    if (!mbResp.ok) {
+      // forward status & text
+      return res.status(mbResp.status).send(text);
+    }
+
+    // parse JSON (MusicBrainz returns JSON when fmt=json)
+    try {
+      const json = JSON.parse(text);
+      return res.json(json);
+    } catch {
+      // fallback to plaintext
+      return res.type('text').send(text);
+    }
+  } catch (error) {
+    console.error('MusicBrainz proxy error:', error);
+    return res.status(502).json({ message: 'Failed to proxy request to MusicBrainz.' });
+  }
+});
+
 // 2. Servir arquivos estáticos do React Frontend
 const clientDistPath = path.join(process.cwd(), 'client', 'dist');
 app.use(express.static(clientDistPath));
