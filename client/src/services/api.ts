@@ -3,13 +3,23 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api', // O Vite proxy irá redirecionar para http://localhost:3000
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000', // O Vite proxy irá redirecionar para http://localhost:3000
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-export const uploadTrack = async (file: File) => {
+export type TrackDTO = {
+  id: number;
+  title: string;
+  artist: string;
+  album: string;
+  magnetURI: string;
+  sizeBytes: number;
+  duration: number;
+};
+
+const upload = async (file: File, metadata: any) => {
   const formData = new FormData();
   formData.append('trackFile', file);
 
@@ -29,9 +39,13 @@ export const uploadTrack = async (file: File) => {
   return response.data;
 };
 
-export const getTracks = async () => {
+const getTracks = async (): Promise<TrackDTO[]> => {
   const response = await api.get('/tracks');
   return response.data;
 };
 
-export default api;
+const toggleLike = async (trackId: string) => {
+  // Stub
+};
+
+export default { upload, getTracks, toggleLike };

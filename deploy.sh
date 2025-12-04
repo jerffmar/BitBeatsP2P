@@ -178,10 +178,11 @@ if [ -f /etc/nginx/sites-enabled/bitbeats.example.com ]; then
     sudo rm /etc/nginx/sites-enabled/bitbeats.example.com
 fi
 
-# Generate Self-Signed Certificate
-log "Gerando certificado auto-assinado para $SERVER_IP e localhost"
-SAN_CONF=$(mktemp)
-cat <<EOF > "$SAN_CONF"
+# Generate Self-Signed Certificate only if not already exist
+if [ ! -f /etc/ssl/certs/nginx-selfsigned.crt ] || [ ! -f /etc/ssl/private/nginx-selfsigned.key ]; then
+    log "Gerando certificado auto-assinado para $SERVER_IP e localhost"
+    SAN_CONF=$(mktemp)
+    cat <<EOF > "$SAN_CONF"
 [req]
 default_bits = 2048
 prompt = no
@@ -203,13 +204,17 @@ subjectAltName = @alt_names
 DNS.1 = localhost
 IP.1 = $SERVER_IP
 EOF
-sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/ssl/private/nginx-selfsigned.key \
-    -out /etc/ssl/certs/nginx-selfsigned.crt \
-    -config "$SAN_CONF"
-rm -f "$SAN_CONF"
+    sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/ssl/private/nginx-selfsigned.key \
+        -out /etc/ssl/certs/nginx-selfsigned.crt \
+        -config "$SAN_CONF"
+    rm -f "$SAN_CONF"
+else
+    log "Certificado auto-assinado já existe, pulando criação."
+fi
 
-sudo bash -c "cat > $NGINX_CONF" <<EOF
+if [ ! -f "$NGINX_CONF" ]; then
+    sudo bash -c "cat > $NGINX_CONF" <<EOF
 server {
     listen 80 default_server;
     server_name _;
@@ -235,6 +240,10 @@ server {
     }
 }
 EOF
+    log "Configuração Nginx criada em $NGINX_CONF"
+else
+    log "Configuração Nginx já existe em $NGINX_CONF, pulando criação."
+fi
 
 sudo ln -sf $NGINX_CONF /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx || error "Falha na configuração ou reinício do Nginx."

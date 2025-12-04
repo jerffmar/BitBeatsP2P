@@ -64,7 +64,7 @@ import { discoverLocalPeers, signUpload } from './services/p2pNetwork';
 import { initTorrentClient, seedFile, addTorrent } from './services/torrent';
 import { analyzeAudio, normalizeAndTranscode } from './services/audioEngine';
 import { searchGlobalCatalog } from './services/musicBrainz';
-import { api, TrackDTO } from './services/api';
+import api, { TrackDTO } from './services/api';
 import IdentifyPage from './pages/Identify';
 
 interface SearchBundle {
@@ -201,7 +201,7 @@ const App: React.FC = () => {
         const extras = prev.filter((track) => !normalizedIds.has(track.id));
         return [...normalized, ...extras];
       });
-      const totalBytes = serverTracks.reduce((sum, dto) => sum + Number(dto.sizeBytes ?? 0), 0);
+      const totalBytes = serverTracks.reduce((sum: number, dto: TrackDTO) => sum + Number(dto.sizeBytes ?? 0), 0);
       setUsageMB(totalBytes / (1024 * 1024));
     } catch (error) {
       console.error('Failed to refresh seeded library', error);
