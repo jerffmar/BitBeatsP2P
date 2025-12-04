@@ -65,6 +65,7 @@ import { initTorrentClient, seedFile, addTorrent } from './services/torrent';
 import { analyzeAudio, normalizeAndTranscode } from './services/audioEngine';
 import { searchGlobalCatalog } from './services/musicBrainz';
 import { api, TrackDTO } from './services/api';
+import IdentifyPage from './pages/Identify';
 
 interface SearchBundle {
   available: Track[];
@@ -474,6 +475,7 @@ const App: React.FC = () => {
   const navLinks = useMemo(
     () => [
       { path: '/', icon: Radio, label: 'Discovery' },
+      { path: '/identify', icon: Search, label: 'Identify' },
       { path: '/bounties', icon: Zap, label: 'Bounty Board' },
       { path: '/swarm', icon: Users, label: 'Swarm Social' },
       { path: '/library', icon: HardDrive, label: 'Vault' },
@@ -746,7 +748,7 @@ const App: React.FC = () => {
               }
             />
             <Route path="/studio" element={<Navigate to="/library" replace />} />
-            <Route path="/identify" element={<Navigate to="/library" replace />} />
+            <Route path="/identify" element={<IdentifyPage />} />
           </Routes>
         </main>
       </div>

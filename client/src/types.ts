@@ -86,3 +86,14 @@ export interface DetailedMetadata extends GlobalCatalogEntry {
   album?: string;
   tags?: string[];
 }
+
+export interface IdentifiedTrack {
+  id: number;
+  mbid: string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: number;
+  genre?: string;
+  createdAt: string;
+}

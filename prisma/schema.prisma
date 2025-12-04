@@ -1,0 +1,19 @@
+model Track {
+  // ...existing fields...
+  musicBrainzId String? @unique
+  identifiedAt  DateTime?
+  metadata      Json?
+  // ...existing relations...
+}
+
+model IdentifiedTrack {
+  id         Int      @id @default(autoincrement())
+  mbid       String   @unique
+  title      String
+  artist     String
+  album      String?
+  duration   Int?
+  fingerprint String?
+  genre      String?
+  createdAt  DateTime @default(now())
+}
