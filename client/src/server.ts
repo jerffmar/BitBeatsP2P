@@ -214,24 +214,67 @@ app.get('/api/musicbrainz', async (req, res) => {
 
     const mbUrl = `https://musicbrainz.org/ws/2/${endpoint}?${params.toString()}`;
 
-    const mbResp = await fetch(mbUrl, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'BitBeats/1.0 (https://example.com)',
-      },
-    });
+    // Helper: fetch with retries and timeout for transient upstream failures
+    const fetchWithRetries = async (url: string, attempts = 3, baseDelayMs = 400) => {
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
-    const text = await mbResp.text();
-    if (!mbResp.ok) {
-      return res.status(mbResp.status).send(text);
+          const mbResp = await fetch(url, {
+            headers: {
+              Accept: 'application/json',
+              'User-Agent': 'BitBeats/1.0 (https://example.com)',
+            },
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeout);
+
+          const text = await mbResp.text();
+
+          if (!mbResp.ok) {
+            // Retry for 5xx server errors
+            if (mbResp.status >= 500 && i < attempts - 1) {
+              await new Promise((r) => setTimeout(r, baseDelayMs * (i + 1)));
+              continue;
+            }
+            return { ok: false, status: mbResp.status, text };
+          }
+
+          // try parse JSON, otherwise return text
+          try {
+            return { ok: true, json: JSON.parse(text) };
+          } catch {
+            return { ok: true, text };
+          }
+        } catch (err: any) {
+          // aborted or network error -> retry unless final attempt
+          if (i < attempts - 1) {
+            await new Promise((r) => setTimeout(r, baseDelayMs * (i + 1)));
+            continue;
+          }
+          return { ok: false, status: 502, text: String(err?.message ?? 'Network error') };
+        }
+      }
+      return { ok: false, status: 502, text: 'Upstream failed' };
+    };
+
+    const result = await fetchWithRetries(mbUrl, 3, 500);
+
+    if (!result.ok) {
+      // propagate upstream status where reasonable, otherwise 502
+      const status = result.status && typeof result.status === 'number' ? result.status : 502;
+      // return text body when present to help debugging from client
+      if (result.text) return res.status(status).send(result.text);
+      return res.sendStatus(status);
     }
 
-    try {
-      const json = JSON.parse(text);
-      return res.json(json);
-    } catch {
-      return res.type('text').send(text);
+    if ((result as any).json) {
+      return res.json((result as any).json);
     }
+
+    return res.type('text').send((result as any).text ?? '');
   } catch (error) {
     console.error('MusicBrainz proxy error:', error);
     return res.status(502).json({ message: 'Failed to proxy request to MusicBrainz.' });

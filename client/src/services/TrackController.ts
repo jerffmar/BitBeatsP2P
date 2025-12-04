@@ -287,35 +287,62 @@ export class TrackController {
 
     // DELETE /api/tracks/:id
     private deleteTrack = async (req: Request, res: Response) => {
-        const id = Number(req.params.id);
-        if (isNaN(id)) return res.status(400).json({ error: 'Invalid track id' });
+        const idParam = req.params.id;
+        const id = Number(idParam);
+        if (!idParam || isNaN(id)) {
+            return res.status(400).json({ error: 'Invalid track id' });
+        }
+
         try {
+            // Fetch the track with owner info
             const track = await prisma.track.findUnique({ where: { id } });
             if (!track) return res.status(404).json({ error: 'Track not found' });
 
-            // stop seeding if supported by SeedService (best-effort)
+            // Attempt to stop seeding (best-effort)
             try {
-                if (seedService && typeof (seedService as any).stopSeeding === 'function') {
-                    await (seedService as any).stopSeeding(track.magnetURI || track.webSeedUrl || '');
+                const ident = track.magnetURI || track.webSeedUrl || '';
+                if (ident && seedService && typeof (seedService as any).stopSeeding === 'function') {
+                    await (seedService as any).stopSeeding(ident);
                 }
             } catch (e) {
                 console.warn('Failed to stop seeding for track', id, e);
             }
 
-            // delete file from disk via DiskManager (best-effort)
-            try {
-                await diskManager.deleteFile(track.filePath);
-            } catch (e) {
-                console.warn('Failed to delete file from disk for track', id, e);
-                // continue — we still remove DB record
+            // Delete file and sidecars (best-effort). Prefer DiskManager API if available.
+            const pathsToDelete = [track.filePath, `${track.filePath}.sha256`].filter(Boolean);
+            for (const p of pathsToDelete) {
+                try {
+                    if (diskManager && typeof (diskManager as any).deleteFile === 'function') {
+                        await (diskManager as any).deleteFile(p);
+                    } else {
+                        if (fs.existsSync(p)) {
+                            await fs.promises.unlink(p);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Failed to delete path', p, e);
+                }
             }
 
-            // remove DB record
-            await prisma.track.delete({ where: { id } });
+            // Remove DB record
+            await prisma.track.delete({ where: { id: track.id } });
 
-            return res.json({ success: true, id });
+            // Update user's storageUsed (safe BigInt handling)
+            try {
+                const owner = await prisma.user.findUnique({ where: { id: track.userId } });
+                if (owner) {
+                    const current = typeof owner.storageUsed === 'bigint' ? owner.storageUsed : BigInt(owner.storageUsed ?? 0);
+                    const deduct = typeof track.size === 'bigint' ? track.size : BigInt(track.size ?? 0);
+                    const updated = current > deduct ? current - deduct : BigInt(0);
+                    await prisma.user.update({ where: { id: owner.id }, data: { storageUsed: updated as any } });
+                }
+            } catch (e) {
+                console.warn('Failed to update user storageUsed after deleting track', id, e);
+            }
+
+            return res.json({ success: true, id: track.id });
         } catch (err) {
-            console.error('Failed to delete track', id, err);
+            console.error('Failed to delete track', idParam, err);
             return res.status(500).json({ error: 'Failed to delete track' });
         }
     };

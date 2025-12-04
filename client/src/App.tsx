@@ -655,8 +655,19 @@ const App: React.FC = () => {
   const handleDeleteTrack = useCallback(
     async (trackId: string) => {
       try {
+        // If trackId is not a numeric DB id (e.g. optimistic UUID), remove locally only
+        if (!/^\d+$/.test(String(trackId))) {
+          setTracks((prev) => prev.filter((t) => t.id !== trackId));
+          setLibrary((prev) => {
+            const copy = { ...prev };
+            delete copy[trackId];
+            return copy;
+          });
+          return;
+        }
+
+        // persisted track -> call API
         await api.deleteTrack(trackId);
-        // remove from UI state
         setTracks((prev) => prev.filter((t) => t.id !== trackId));
         setLibrary((prev) => {
           const copy = { ...prev };

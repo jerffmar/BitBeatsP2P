@@ -306,7 +306,6 @@ fi
 log "Deployment concluído!"
 echo "Acesse seu aplicativo em https://$DOMAIN_NAME (Aceite o certificado auto-assinado)"
 echo "Status do PM2 (usuário $USER_NAME): sudo -u $USER_NAME pm2 status bitbeats"
-sudo -u "$USER_NAME" pm2 status bitbeats
 sudo -u "$USER_NAME" pm2 status
 echo "Logs do PM2 (usuário $USER_NAME): sudo -u $USER_NAME pm2 logs bitbeats --lines 100 --nostream"
 sudo -u "$USER_NAME" pm2 logs bitbeats --lines 100 --nostream
