@@ -1,70 +1,53 @@
+// client/src/pages/LibraryDashboard.tsx
+
 import React from 'react';
-import { User, Track, LibraryEntry } from '../types';
 
-type Props = {
-  user: User;
-  tracks: Track[];
-  library: Record<string, LibraryEntry>;
-  usageMB: number;
-  onImport: (file: File, metadata: { title: string; artist: string; album?: string }) => Promise<void>;
-};
+const LibraryDashboard: React.FC = () => {
+  // Dados simulados
+  const storageUsed = 3.5; // GB
+  const maxQuota = 10; // GB
+  const usagePercent = (storageUsed / maxQuota) * 100;
 
-const LibraryDashboard: React.FC<Props> = ({ user, tracks, library, usageMB, onImport }) => {
-  const seededCount = Object.values(library).filter((entry) => entry.status === 'SEEDING').length;
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      const file = event.target.files?.[0];
-      if (!file) {
-        console.warn('No file selected for import');
-        return;
-      }
-      console.log('File selected for import:', file.name);
-      onImport(file, { title: file.name, artist: user.username });
-    } catch (error) {
-      console.error('Error handling file import:', error);
-    }
-  };
+  const quadPreviewData = [
+    { title: "Álbuns Curtidos", count: 12, color: "bg-red-500" },
+    { title: "Artistas Seguidos", count: 5, color: "bg-blue-500" },
+    { title: "Faixas no Vault", count: 45, color: "bg-green-500" },
+    { title: "Faixas Enviadas", count: 8, color: "bg-yellow-500" },
+  ];
 
   return (
-    <section className="max-w-5xl mx-auto p-6 md:p-10 space-y-6">
-      <header className="rounded-3xl border border-white/10 bg-white/5 p-6 flex flex-wrap gap-6 justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-gray-500">Vault</p>
-          <h1 className="text-3xl font-bold text-white mt-1">{user.username}’s Library</h1>
-          <p className="text-sm text-gray-400">{tracks.length} swarm tracks · {seededCount} seeded entries</p>
-        </div>
-        <label className="px-4 py-3 rounded-2xl border border-white/10 bg-white/5 text-sm font-semibold text-white cursor-pointer hover:border-cyan-400 transition">
-          Import Local Audio
-          <input type="file" accept="audio/*" className="hidden" onChange={handleImport} />
-        </label>
-      </header>
+    <div className="p-8">
+      <h1 className="text-4xl font-bold text-white mb-8">Sua Biblioteca BitBeats</h1>
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-6 space-y-4">
-        <p className="text-sm text-gray-400">Storage usage</p>
-        <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-cyan-400 to-indigo-500" style={{ width: `${Math.min(100, (usageMB / (1024 * 2)) * 100)}%` }} />
+      {/* Storage Usage Bar */}
+      <div className="mb-10 bg-gray-800 p-6 rounded-lg shadow-xl">
+        <h2 className="text-xl font-semibold text-gray-300 mb-3">Uso de Armazenamento (Seeding)</h2>
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm text-gray-400">
+            {storageUsed} GB de {maxQuota} GB usados
+          </span>
+          <span className="text-sm font-bold text-white">{usagePercent.toFixed(1)}%</span>
         </div>
-        <p className="text-xs text-gray-500">{usageMB.toFixed(1)} MB of 2048 MB (soft cap)</p>
+        <div className="w-full bg-gray-700 rounded-full h-3">
+          <div
+            className="h-3 rounded-full bg-purple-600 transition-all duration-500"
+            style={{ width: `${usagePercent}%` }}
+          ></div>
+        </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {tracks.map((track) => (
-          <article key={track.id} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-            <img src={track.coverUrl} alt={track.title} className="w-full h-44 object-cover rounded-xl border border-white/10" />
-            <p className="text-white font-semibold truncate">{track.title}</p>
-            <p className="text-xs text-gray-400 truncate">{track.artist}</p>
-            <p className="text-[11px] text-gray-500 uppercase tracking-[0.3em]">
-              {library[track.id]?.status ?? 'REMOTE'}
-            </p>
-          </article>
-        ))}
-        {!tracks.length && (
-          <div className="col-span-full rounded-2xl border border-dashed border-white/20 p-8 text-center text-gray-500">
-            No tracks yet. Upload or import to populate your vault.
+      {/* Quad-Preview Widgets */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {quadPreviewData.map((item, index) => (
+          <div key={index} className={`p-6 rounded-lg shadow-xl ${item.color} bg-opacity-20 border-l-4 border-${item.color.split('-')[1]}-500`}>
+            <p className="text-sm font-medium text-gray-400">{item.title}</p>
+            <p className="text-4xl font-extrabold text-white mt-1">{item.count}</p>
           </div>
-        )}
+        ))}
       </div>
-    </section>
+
+      {/* TODO: Lista de faixas e outras informações da biblioteca */}
+    </div>
   );
 };
 

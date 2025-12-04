@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { AuthScreen } from './AuthScreen';
+import { AuthScreen } from './pages/AuthScreen';
 import ArtistPage from './pages/ArtistPage';
 import AlbumPage from './pages/AlbumPage';
 import LibraryDashboard from './pages/LibraryDashboard';
@@ -357,13 +357,17 @@ const App: React.FC = () => {
         const magnet = await seedFile(new File([transposed], `${metadata.artist}-${metadata.title}.wav`, { type: 'audio/wav' }), metadata.title);
         console.log('Seeding complete, magnet:', magnet);
 
+        // Create blob URL for playback
+        const blob = new Blob([transposed], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(blob);
+
         const optimisticTrack: Track = {
           id: localTrackId,
           title: metadata.title,
           artist: metadata.artist,
           album: metadata.album ?? 'Unreleased',
           coverUrl: currentTrack?.coverUrl ?? 'https://images.unsplash.com/photo-1511376777868-611b54f68947?auto=format&fit=crop&w=600&q=60',
-          audioUrl: magnet,
+          audioUrl: audioUrl,
           duration: analysis.duration,
           sizeMB: normalizedSizeMB,
         };
@@ -421,13 +425,7 @@ const App: React.FC = () => {
       setCurrentTrack(track);
       setIsPlaying(false);
       audioRef.current.pause();
-      const cached = await loadFromVault(track.id);
-      if (cached) {
-        audioRef.current.src = cached;
-      } else {
-        // Use HTTP streaming for reliable playback
-        audioRef.current.src = `/api/stream/${track.id}`;
-      }
+      audioRef.current.src = track.audioUrl;
       try {
         await audioRef.current.play();
         setIsPlaying(true);

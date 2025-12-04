@@ -1,34 +1,37 @@
-import axios, { AxiosProgressEvent } from 'axios';
+// client/src/services/api.ts
 
-const apiClient = axios.create({
-  baseURL: '/api',
-  maxContentLength: Infinity,
-  maxBodyLength: Infinity,
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || '/api', // O Vite proxy irá redirecionar para http://localhost:3000
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-export type TrackDTO = {
-  id: number;
-  title: string;
-  artist: string;
-  album?: string;
-  duration: number;
-  magnetURI: string;
-  sizeBytes: string;
-  uploadedAt: string;
-};
+export const uploadTrack = async (file: File) => {
+  const formData = new FormData();
+  formData.append('trackFile', file);
 
-const upload = (formData: FormData, onProgress?: (pct: number) => void) =>
-  apiClient.post('/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
-    onUploadProgress: (evt: AxiosProgressEvent) => {
-      if (evt.total && onProgress) onProgress(Math.round((evt.loaded / evt.total) * 100));
+  // Simulação de autenticação de usuário (substituir por lógica real)
+  // O backend está hardcoded para userId=1, mas em um app real o token estaria aqui.
+
+  const response = await api.post('/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    onUploadProgress: (progressEvent) => {
+      const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+      console.log(`Upload progress: ${percentCompleted}%`);
+      // TODO: Adicionar lógica para atualizar o estado do progresso na UI
     },
   });
+  return response.data;
+};
 
-const getTracks = () => apiClient.get<TrackDTO[]>('/tracks').then((res) => res.data);
+export const getTracks = async () => {
+  const response = await api.get('/tracks');
+  return response.data;
+};
 
-const toggleLike = (id: number) => apiClient.post(`/likes/${id}`).then((res) => res.data);
-
-export const api = { upload, getTracks, toggleLike };
+export default api;
